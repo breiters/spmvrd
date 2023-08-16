@@ -2,24 +2,24 @@
 
 // cache line size on the machine used for profiling
 #ifndef CACHE_LINESIZE
-#    define CACHE_LINESIZE 64
+#    define CACHE_LINESIZE 256
 #endif
 
 // cache line size of the target architecture (must be a power-of-two)
-#define MEMBLOCKLEN   256
+#define MEMBLOCKLEN 256
 
 // Consistency checks?
-#define DEBUG         0
+#define DEBUG       0
 
 // 2: Huge amount of debug output, 1: checks, 0: silent
-#define VERBOSE       0
+#define VERBOSE     0
 
 // Assertions and consistency check?
 
-#if defined(NDEBUG)
+#if NDEBUG
 #    define RD_DEBUG 0
 #else
-#    define RD_DEBUG 1
+#    define RD_DEBUG 2
 #endif
 
 // 2: Huge amount of debug output, 1: checks, 0: silent

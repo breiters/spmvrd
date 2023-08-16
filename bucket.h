@@ -16,5 +16,5 @@ public:
     StackIterator marker;
 
     static inline std::vector<min_type> min_dists; // minimum reuse distance in bucket
-    static inline constexpr min_type    inf_dist{std::numeric_limits<min_type>::max()};
+    static inline constexpr min_type    INF_DIST{std::numeric_limits<min_type>::max()};
 };

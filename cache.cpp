@@ -14,10 +14,13 @@ void Cache::on_next_bucket_gets_active()
 
     --(buckets_[next_bucket_].marker);
 
+    // fprintf(stderr, "stack size: %d, next bucket: %d\n", stack_.size(), next_bucket_);
+
 #if RD_DEBUG
     StackIterator it = stack_.begin();
-    for (unsigned i = 0; i < Bucket::min_dists[next_bucket_]; i++)
+    for (Bucket::min_type i = 0; i < Bucket::min_dists[next_bucket_]; i++)
         it++;
+
     assert(it == buckets_[next_bucket_].marker);
 #endif /* RD_DEBUG */
 
@@ -48,7 +51,7 @@ StackIterator Cache::on_block_new(MemoryBlock &&mb)
     move_markers(next_bucket_ - 1);
 
     // does another bucket get active?
-    if (Bucket::min_dists[next_bucket_] != Bucket::inf_dist && (stack_.size() > Bucket::min_dists[next_bucket_])) {
+    if (Bucket::min_dists[next_bucket_] != Bucket::INF_DIST && (stack_.size() > Bucket::min_dists[next_bucket_])) {
         on_next_bucket_gets_active();
     }
 
@@ -91,7 +94,8 @@ int Cache::on_block_seen(StackIterator &blockIt)
 /**
  * Sanity check:
  * - every active marker must be found in stack in the right order
- * - distance of bucket marker to stack begin must be equal to the min distance for the bucket
+ * - distance of bucket marker to stack begin must be equal to the min distance for the
+ * bucket
  */
 void Cache::check_consistency()
 {
