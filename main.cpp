@@ -12,8 +12,13 @@
 #include <cstdlib>
 #include <unistd.h>
 
-#define USE_SCALED_REUSE    0
-#define USE_CALC_NOSC_REUSE 0
+#ifndef USE_SCALED_REUSE
+    #define USE_SCALED_REUSE    0
+#endif /* USE_SCALED_REUSE */
+
+#ifndef USE_CALC_NOSC_REUSE
+    #define USE_CALC_NOSC_REUSE 0
+#endif /* USE_CALC_NOSC_REUSE */
 
 using rowptr_t = int64_t;
 using colidx_t = int;
@@ -105,24 +110,6 @@ void set_buckets_a64fx_scaled(const auto &matrix)
 }
 
 #if 0
-void set_buckets()
-{
-    unsigned long KiB = 1024;
-
-    Bucket::min_dists.push_back(0);
-
-    for (int i = 0; i < 20; i++) {
-        Bucket::min_dists.push_back(KiB / MEMBLOCKLEN);
-        KiB *= 1.5;
-    }
-
-    // bucket for cold misses (infinite reuse distance)
-    Bucket::min_dists.push_back(Bucket::INF_DIST);
-
-    // sort buckets in ascending order
-    std::sort(Bucket::min_dists.begin(), Bucket::min_dists.end());
-}
-
 void make_numa(matrix_csr<double, uint32_t, uint32_t> &matrix)
 {
     // printf("rowptr 0: %d\n", matrix.row_ptr[0]);
