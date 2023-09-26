@@ -117,9 +117,9 @@ void make_numa(matrix_csr<double, uint32_t, uint32_t> &matrix)
     uint32_t *rowptr_ = (uint32_t *)malloc(sizeof(uint32_t) * (matrix.nrow + 1));
 #    pragma omp parallel
 #    pragma omp for
-    for (uint r = 0; r < matrix.nrow + 1; ++r) {
+    for (unsigned r = 0; r < matrix.nrow + 1; ++r) {
         rowptr_[r] = matrix.row_ptr[r];
-        for (uint i = matrix.row_ptr[r]; i < matrix.row_ptr[r + 1]; ++i) {
+        for (unsigned i = matrix.row_ptr[r]; i < matrix.row_ptr[r + 1]; ++i) {
             colidx_[i] = matrix.col_idx[i];
         }
     }
@@ -135,7 +135,7 @@ void make_numa(matrix_csr<double, uint32_t, uint32_t> &matrix)
 void reuse_scaled(int tid, PrivateCache &pc, SharedCache &sc, const auto &matrix)
 {
 #pragma omp for
-    for (uint r = 0; r < matrix.nrow; ++r) {
+    for (unsigned r = 0; r < matrix.nrow; ++r) {
         // fprintf(stderr, "row: %d\n", r);
         for (rowptr_t i = matrix.row_ptr[r]; i < matrix.row_ptr[r + 1]; ++i) {
             auto cl = cline<val_t, MEMBLOCKLEN>(matrix.col_idx[i]);
@@ -164,7 +164,7 @@ void reuse_calc(int tid, PrivateCache &pc, SharedCache &sc, const auto &matrix)
     sc.handle_cline_shared(tid, cl_row);
 
 #pragma omp for
-    for (uint r = 0; r < matrix.nrow; ++r) {
+    for (unsigned r = 0; r < matrix.nrow; ++r) {
         // fprintf(stderr, "row: %d\n", r);
         // rowptr[r + 1]
         auto cl_row_plus1 = cl_row_start + cline<rowptr_t, MEMBLOCKLEN>(r + 1);
@@ -247,7 +247,7 @@ usage:
     double variance = 0.0;
 
     double avg_nnzs_per_row = (double)matrix.nnz / matrix.nrow;
-    for (uint r = 0; r < matrix.nrow; ++r) {
+    for (unsigned r = 0; r < matrix.nrow; ++r) {
 	int nnzs = matrix.row_ptr[r + 1] - matrix.row_ptr[r];
         variance += ((double)nnzs - avg_nnzs_per_row) * ((double)nnzs - avg_nnzs_per_row);
     }

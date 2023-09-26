@@ -12,7 +12,7 @@
 #include <cstdint>
 #include <cstdio>
 
-typedef uint Addr;
+typedef unsigned Addr;
 
 // make sure that memblocks are powers of two
 static constexpr bool is_pow2(int a) { return !(a & (a - 1)); }
@@ -35,7 +35,7 @@ static constexpr int first_set = ffs_constexpr(MEMBLOCKLEN);
 
 // gets the cache line number of an index
 template <typename T, size_t CLSIZE>
-uint cline(uint64_t idx)
+unsigned cline(uint64_t idx)
 {
     constexpr static auto fs = ffs_constexpr(CLSIZE / sizeof(T));
     return idx >> fs;
@@ -72,7 +72,7 @@ public:
 
     int on_block_seen(StackIterator &it);
 
-    void incr_access(uint bucket) { buckets_[bucket].access_count++; }
+    void incr_access(unsigned bucket) { buckets_[bucket].access_count++; }
     // count access with infinite reuse distance
     void incr_access_inf() { incr_access(buckets_.size() - 1); }
 
@@ -103,7 +103,7 @@ public:
     }
 
 private:
-    void move_markers(uint);
+    void move_markers(unsigned);
     void on_next_bucket_gets_active();
     void check_consistency();
 
@@ -111,7 +111,7 @@ private:
     std::unordered_map<Addr, StackIterator> refmap_{};
 
     Addr                last_{(Addr)-1};
-    uint                next_bucket_{1u};                                        //
+    unsigned                next_bucket_{1u};                                        //
     std::vector<Bucket> buckets_{std::vector<Bucket>{Bucket::min_dists.size()}}; //
 
 protected:

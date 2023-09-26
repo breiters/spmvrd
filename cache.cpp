@@ -108,7 +108,7 @@ void Cache::check_consistency()
     }
     iter          = 0;
     auto it_start = stack_.begin();
-    for (uint b = 1; b < next_bucket_; b++) {
+    for (unsigned b = 1; b < next_bucket_; b++) {
         unsigned distance = 0;
         for (auto it = it_start; it != buckets_[b].marker; it++) {
             assert(it != stack_.end());
@@ -119,11 +119,11 @@ void Cache::check_consistency()
 #endif /* RD_DEBUG */
 }
 
-void Cache::move_markers(uint topBucket)
+void Cache::move_markers(unsigned topBucket)
 {
     assert(topBucket < next_bucket_);
 
-    for (uint b = 1; b <= topBucket; b++) {
+    for (unsigned b = 1; b <= topBucket; b++) {
         assert(buckets_[next_bucket_].marker != stack_.begin());
 
         // decrement marker so it stays always on same distance to stack begin
