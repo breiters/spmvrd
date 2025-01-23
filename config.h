@@ -5,6 +5,8 @@
 #    define CACHE_LINESIZE 256
 #endif
 
+#define REUSE_DISTANCE_METHOD_NEW 1
+
 // cache line size of the target architecture (must be a power-of-two)
 #define MEMBLOCKLEN 256
 

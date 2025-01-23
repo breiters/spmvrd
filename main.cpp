@@ -13,7 +13,7 @@
 #include <unistd.h>
 
 #ifndef USE_SCALED_REUSE
-    #define USE_SCALED_REUSE    0
+    #define USE_SCALED_REUSE    1
 #endif /* USE_SCALED_REUSE */
 
 #ifndef USE_CALC_NOSC_REUSE
@@ -201,6 +201,9 @@ int main(int argc, char *argv[])
 {
     char *matrix_path = nullptr;
     FILE *csv_file    = stdout;
+#if REUSE_DISTANCE_METHOD_NEW
+    FILE *csv_file2   = stdout;
+#endif
     bool  verbose     = false;
 
     int opt;
@@ -215,6 +218,15 @@ int main(int argc, char *argv[])
                 perror("fopen (csv file)");
                 exit(EXIT_FAILURE);
             }
+#if REUSE_DISTANCE_METHOD_NEW
+            char csv_file2_name[1024];
+            snprintf(csv_file2_name, 1024, "_%s", optarg);
+            csv_file2 = fopen(optarg, "w+");
+            if (!csv_file2) {
+                perror("fopen (csv file2)");
+                exit(EXIT_FAILURE);
+            }
+#endif
             break;
         case 'v':
             verbose = true;
@@ -320,14 +332,24 @@ usage:
         }
 
 #pragma omp critical
+{
         pc.print_csv(csv_file, matrix, tid);
+#if REUSE_DISTANCE_METHOD_NEW
+        pc.print_csv2(csv_file2, matrix, tid);
+#endif
+}
+        
     }
 
     size_t i = 0u;
     for (auto &sc : shared_caches) {
         sc.print_csv(csv_file, matrix, i);
+#if REUSE_DISTANCE_METHOD_NEW
+        sc.print_csv2(csv_file2, matrix, i);
+#endif
         ++i;
     }
     fclose(csv_file);
+    fclose(csv_file2);
     fclose(overhead_csv_file);
 }

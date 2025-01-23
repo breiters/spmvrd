@@ -53,6 +53,10 @@ public:
     {
         if (addr == last_) {
             incr_access(0);
+#if REUSE_DISTANCE_METHOD_NEW
+            stack_.front().reference_time_++;
+            cache_refctr_++;
+#endif
             return;
         }
         last_ = addr;
@@ -62,10 +66,33 @@ public:
         if (map_it == refmap_.end()) {
             refmap_[addr] = on_block_new(MemoryBlock{});
             incr_access_inf();
+#if REUSE_DISTANCE_METHOD_NEW
+            incr_access2_inf();
+#endif
         } else {
             int bucket = on_block_seen(map_it->second);
             incr_access(bucket);
+#if REUSE_DISTANCE_METHOD_NEW
+            unsigned refctrdiff = cache_refctr_ - map_it->second->reference_time_;
+            map_it->second->reference_time_ = cache_refctr_;
+
+            // TODO: this might count in the wrong bucket :/
+            //
+            // we only know that the true reuse distance is between dist_min and dist_max
+            unsigned num_cache_lines_before_reuse = refctrdiff * (sizeof(double) + sizeof(int)) / CACHE_LINESIZE;
+            unsigned dist_min = Bucket::min_dists[bucket];
+            unsigned dist_max = Bucket::min_dists[bucket + 1] - 1;
+            while(dist_min + num_cache_lines_before_reuse < dist_max && bucket < buckets2_.size()) {
+                bucket++;
+                dist_min = Bucket::min_dists[bucket];
+                dist_max = Bucket::min_dists[bucket + 1] - 1;
+            }
+            incr_access2(bucket);
+#endif
         }
+#if REUSE_DISTANCE_METHOD_NEW
+        cache_refctr_++;
+#endif
     }
 
     StackIterator on_block_new(MemoryBlock &&mb);
@@ -75,6 +102,11 @@ public:
     void incr_access(unsigned bucket) { buckets_[bucket].access_count++; }
     // count access with infinite reuse distance
     void incr_access_inf() { incr_access(buckets_.size() - 1); }
+
+#if REUSE_DISTANCE_METHOD_NEW
+    void incr_access2(unsigned bucket) { buckets2_[bucket].access_count++; }
+    void incr_access2_inf() { incr_access(buckets2_.size() - 1); }
+#endif
 
     const std::vector<Bucket> &buckets() const { return buckets_; }
 
@@ -96,10 +128,35 @@ public:
         }
     }
 
+#if REUSE_DISTANCE_METHOD_NEW
+    void print_csv2(FILE *file, const auto &matrix, int id) const
+    {
+        size_t i = 0u;
+        for (auto &b : buckets2_) {
+            // matrix name, nnz, nrow, cache id, shared, min bucket, count
+            fprintf(file,
+                    "%s,%zu,%zu,%d,%d,%lu,%lu\n",
+                    matrix.name,
+                    matrix.nnz,
+                    matrix.nrow,
+                    id,
+                    shared_,
+                    Bucket::min_dists[i],
+                    b.access_count);
+            ++i;
+        }
+    }
+#endif
+
     void reset_buckets()
     {
         for (auto &b : buckets_)
             b.access_count = 0;
+
+#if REUSE_DISTANCE_METHOD_NEW
+        for (auto &b : buckets2_)
+            b.access_count = 0;
+#endif
     }
 
 private:
@@ -110,9 +167,13 @@ private:
     std::list<MemoryBlock>                  stack_{};
     std::unordered_map<Addr, StackIterator> refmap_{};
 
-    Addr                last_{(Addr)-1};
-    unsigned                next_bucket_{1u};                                        //
-    std::vector<Bucket> buckets_{std::vector<Bucket>{Bucket::min_dists.size()}}; //
+#if REUSE_DISTANCE_METHOD_NEW
+    unsigned cache_refctr_{0u};
+    std::vector<Bucket> buckets2_{std::vector<Bucket>{Bucket::min_dists.size()}};
+#endif
+    Addr                last_{(Addr)-1}; // mark case "first address" with invalid address
+    unsigned            next_bucket_{1u};
+    std::vector<Bucket> buckets_{std::vector<Bucket>{Bucket::min_dists.size()}};
 
 protected:
     bool shared_{false};
@@ -147,6 +208,7 @@ public:
         mcslock_.unlock(tid);
     }
 
+    // TODO: merge overloads into variadic function template
 #if 0
     template<typename... As>
     void handle_clines_shared(int tid, As... addrs)

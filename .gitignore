@@ -1,0 +1,9 @@
+.vscode
+
+spmvrd
+*.o
+
+mtx
+results
+ss490matrices.txt
+read_matrix_jtrott.h
