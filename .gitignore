@@ -1,0 +1,8 @@
+.vscode
+
+*.o
+spmvrd
+
+mtx
+results
+*.csv
