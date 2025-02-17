@@ -11,5 +11,5 @@ To run the executable, you need to specify the number of OpenMP threads (set `OM
 ```bash
 export OMP_NUM_THREADS=48
 t=${OMP_NUM_THREADS}
-./spmvrd -f example.mtx -v > reuse-distance-output.csv
+./spmvrd -f test.mtx -v > reuse-distance-output.csv
 ```
