@@ -31,14 +31,13 @@ static constexpr int ffs_constexpr(int x)
 }
 
 static_assert(ffs_constexpr(256) == 8, "ffs_constexpr(256) == 8"); // sanity check
-static constexpr int first_set = ffs_constexpr(MEMBLOCKLEN);
 
 // gets the cache line number of an index
 template <typename T, size_t CLSIZE>
 unsigned cline(uint64_t idx)
 {
-    constexpr static auto fs = ffs_constexpr(CLSIZE / sizeof(T));
-    return idx >> fs;
+    constexpr static auto first_bit_set = ffs_constexpr(CLSIZE / sizeof(T));
+    return idx >> first_bit_set;
 }
 
 struct alignas(CACHE_LINESIZE) AddrWrapper {

@@ -12,13 +12,9 @@
 #include <cstdlib>
 #include <unistd.h>
 
-#ifndef USE_SCALED_REUSE
-    #define USE_SCALED_REUSE    0
-#endif /* USE_SCALED_REUSE */
-
-#ifndef USE_CALC_NOSC_REUSE
-    #define USE_CALC_NOSC_REUSE 0
-#endif /* USE_CALC_NOSC_REUSE */
+#ifndef USE_ONLY_X_IN_TEMPORAL_SECTOR
+#    define USE_ONLY_X_IN_TEMPORAL_SECTOR 1
+#endif /* USE_ONLY_X_IN_TEMPORAL_SECTOR */
 
 using rowptr_t = int64_t;
 using colidx_t = int;
@@ -43,7 +39,7 @@ void set_buckets_a64fx(const auto &matrix)
     int L2_capacity_per_way  = 8 * MiB / 16;
 
     Bucket::min_dists.push_back(0);
-    
+
     for (int i = 0; i < L1ways; i++)
         Bucket::min_dists.push_back(L1d_capacity_per_way * (i + 1) / MEMBLOCKLEN);
 
@@ -81,6 +77,10 @@ void set_buckets_a64fx_scaled(const auto &matrix)
     double min_scale_sc = (double)sizeof(val_t) /
                           ((double)(sizeof(rowptr_t) + sizeof(y_t)) * (double)matrix.nrow / matrix.nnz + sizeof(x_t));
 
+#if USE_ONLY_X_IN_TEMPORAL_SECTOR
+    min_scale_sc = 1.0;
+#endif
+
     for (int i = 0; i < L1ways; i++) {
         Bucket::min_type min = min_scale_sc * L1d_capacity_per_way * (i + 1) / MEMBLOCKLEN;
         Bucket::min_dists.push_back(min);
@@ -109,30 +109,7 @@ void set_buckets_a64fx_scaled(const auto &matrix)
     }
 }
 
-#if 0
-void make_numa(matrix_csr<double, uint32_t, uint32_t> &matrix)
-{
-    // printf("rowptr 0: %d\n", matrix.row_ptr[0]);
-    uint32_t *colidx_ = (uint32_t *)malloc(sizeof(uint32_t) * matrix.nnz);
-    uint32_t *rowptr_ = (uint32_t *)malloc(sizeof(uint32_t) * (matrix.nrow + 1));
-#    pragma omp parallel
-#    pragma omp for
-    for (unsigned r = 0; r < matrix.nrow + 1; ++r) {
-        rowptr_[r] = matrix.row_ptr[r];
-        for (unsigned i = matrix.row_ptr[r]; i < matrix.row_ptr[r + 1]; ++i) {
-            colidx_[i] = matrix.col_idx[i];
-        }
-    }
-    rowptr_[matrix.nrow] = matrix.row_ptr[matrix.nrow];
-
-    free(matrix.row_ptr);
-    free(matrix.col_idx);
-    matrix.row_ptr = rowptr_;
-    matrix.col_idx = colidx_;
-}
-#endif
-
-void reuse_scaled(int tid, PrivateCache &pc, SharedCache &sc, const auto &matrix)
+void reuse_sector0(int tid, PrivateCache &pc, SharedCache &sc, const auto &matrix)
 {
 #pragma omp for
     for (unsigned r = 0; r < matrix.nrow; ++r) {
@@ -147,7 +124,7 @@ void reuse_scaled(int tid, PrivateCache &pc, SharedCache &sc, const auto &matrix
     }
 }
 
-void reuse_calc(int tid, PrivateCache &pc, SharedCache &sc, const auto &matrix)
+void reuse_calc2(int tid, PrivateCache &pc, SharedCache &sc, const auto &matrix)
 {
     //           x[0]...x[ncol] <padding> rowptr[0] ... rowptr[nrow] ...
     //
@@ -158,14 +135,17 @@ void reuse_calc(int tid, PrivateCache &pc, SharedCache &sc, const auto &matrix)
     auto cl_a_start   = cl_y_start + cline<val_t, MEMBLOCKLEN>(matrix.nrow) + 1;
     auto cl_col_start = cl_a_start + cline<val_t, MEMBLOCKLEN>(matrix.nnz) + 1;
 
+#if !USE_ONLY_X_IN_TEMPORAL_SECTOR || USE_CALC_NOSC_REUSE
     // row ptr[0]
     auto cl_row = cl_row_start + cline<rowptr_t, MEMBLOCKLEN>(0);
     pc.handle_cline(cl_row);
     sc.handle_cline_shared(tid, cl_row);
+#endif
 
 #pragma omp for
     for (unsigned r = 0; r < matrix.nrow; ++r) {
         // fprintf(stderr, "row: %d\n", r);
+#if !USE_ONLY_X_IN_TEMPORAL_SECTOR || USE_CALC_NOSC_REUSE
         // rowptr[r + 1]
         auto cl_row_plus1 = cl_row_start + cline<rowptr_t, MEMBLOCKLEN>(r + 1);
         pc.handle_cline(cl_row_plus1);
@@ -175,6 +155,7 @@ void reuse_calc(int tid, PrivateCache &pc, SharedCache &sc, const auto &matrix)
         pc.handle_cline(cl_y);
 
         sc.handle_clines_shared(tid, cl_row_plus1, cl_y);
+#endif
 
         for (rowptr_t i = matrix.row_ptr[r]; i < matrix.row_ptr[r + 1]; ++i) {
 #if USE_CALC_NOSC_REUSE
@@ -197,18 +178,65 @@ void reuse_calc(int tid, PrivateCache &pc, SharedCache &sc, const auto &matrix)
     }
 }
 
+void reuse_sector1(int tid, PrivateCache &pc, SharedCache &sc, const auto &matrix)
+{
+    //           x[0]...x[ncol] <padding> rowptr[0] ... rowptr[nrow] ...
+    //
+    // cacheline(x[0]) = 0 ... cacheline(ncol) = ncol * sizeof(val_t) / MEMBLOCKLEN ...
+    auto cl_x_end     = cline<val_t, MEMBLOCKLEN>(matrix.ncol);
+    auto cl_row_start = cl_x_end + 1;
+    auto cl_y_start   = cl_row_start + cline<rowptr_t, MEMBLOCKLEN>(matrix.nrow + 1) + 1;
+    auto cl_a_start   = cl_y_start + cline<val_t, MEMBLOCKLEN>(matrix.nrow) + 1;
+    auto cl_col_start = cl_a_start + cline<val_t, MEMBLOCKLEN>(matrix.nnz) + 1;
+
+    // row ptr[0]
+    auto cl_row = cl_row_start + cline<rowptr_t, MEMBLOCKLEN>(0);
+    pc.handle_cline(cl_row);
+    sc.handle_cline_shared(tid, cl_row);
+
+#pragma omp for
+    for (unsigned r = 0; r < matrix.nrow; ++r) {
+        // rowptr[r + 1]
+        auto cl_row_plus1 = cl_row_start + cline<rowptr_t, MEMBLOCKLEN>(r + 1);
+        pc.handle_cline(cl_row_plus1);
+
+        // y[r]
+        auto cl_y = cl_y_start + cline<val_t, MEMBLOCKLEN>(r);
+        pc.handle_cline(cl_y);
+        sc.handle_clines_shared(tid, cl_row_plus1, cl_y);
+
+        for (rowptr_t i = matrix.row_ptr[r]; i < matrix.row_ptr[r + 1]; ++i) {
+            // a[i]
+            auto cl_a = cl_a_start + cline<val_t, MEMBLOCKLEN>(i);
+            pc.handle_cline(cl_a);
+            // col_idx[i]
+            auto cl_col = cl_col_start + cline<colidx_t, MEMBLOCKLEN>(i);
+            pc.handle_cline(cl_col);
+
+            // x[col_idx[i]]
+            auto cl_x = cline<val_t, MEMBLOCKLEN>(matrix.col_idx[i]);
+            pc.handle_cline(cl_x);
+            sc.handle_clines_shared(tid, cl_a, cl_col);
+        }
+    }
+}
+
+enum Config : unsigned { SECTOR0 = 0, SECTOR1, CONFIG_END };
+
 int main(int argc, char *argv[])
 {
-    char *matrix_path = nullptr;
-    FILE *csv_file    = stdout;
-    bool  verbose     = false;
+    char       *matrix_path = nullptr;
+    FILE       *csv_file    = stdout;
+    bool        verbose     = false;
+    enum Config conf        = SECTOR0;
 
     int opt;
-    while ((opt = getopt(argc, argv, "f:o:v")) != -1) {
+    while ((opt = getopt(argc, argv, "f:o:c:v")) != -1) {
         switch (opt) {
         case 'f':
             matrix_path = optarg;
             break;
+
         case 'o':
             csv_file = fopen(optarg, "w+");
             if (!csv_file) {
@@ -216,12 +244,21 @@ int main(int argc, char *argv[])
                 exit(EXIT_FAILURE);
             }
             break;
+
+        case 'c':
+            conf = static_cast<Config>(strtoul(optarg, nullptr, 10));
+            if (conf >= CONFIG_END) {
+                goto usage;
+            }
+            break;
+
         case 'v':
             verbose = true;
             break;
+
         default: /* '?' */
 usage:
-            fprintf(stderr, "Usage: %s -f <matrix file>  [-o csv file] [-v]\n", argv[0]);
+            fprintf(stderr, "Usage: %s -f <matrix file>  [-o csv file] [-c config] [-v]\n", argv[0]);
             exit(EXIT_FAILURE);
         }
     }
@@ -243,25 +280,14 @@ usage:
     matrix_csr<val_t, rowptr_t, colidx_t> matrix;
     read_matrix(matrix, matrix_path);
 
-#if CALCULATE_NNZ_PER_ROW_VARIANCE
-    double variance = 0.0;
-
-    double avg_nnzs_per_row = (double)matrix.nnz / matrix.nrow;
-    for (unsigned r = 0; r < matrix.nrow; ++r) {
-	int nnzs = matrix.row_ptr[r + 1] - matrix.row_ptr[r];
-        variance += ((double)nnzs - avg_nnzs_per_row) * ((double)nnzs - avg_nnzs_per_row);
-    }
-    variance /= matrix.nrow;
-    FILE *varfile = fopen("variance.csv", "a");
-    fprintf(varfile, "%s,%f,%f\n", matrix_path, variance, variance / avg_nnzs_per_row);
-    fclose(varfile);
-    exit(0);
-#endif
+    char *needle = strrchr(matrix_path, '/');
+    matrix.name  = needle ? needle + 1 : matrix_path;
 
     constexpr int threads_per_shared_cache = 12;
     constexpr int num_shared_caches        = 4;
 
     assert(omp_get_max_threads() <= MAX_THREADS);
+
     assert((cline<int32_t, 256>(0u) == 0));
     assert((cline<int32_t, 256>(64u) == 1));
     assert((cline<int32_t, 256>(128u) == 2));
@@ -269,7 +295,6 @@ usage:
     assert((cline<double, 256>(32u) == 1));
     assert((cline<double, 256>(64u) == 2));
 
-    // set_buckets();
 #if USE_SCALED_REUSE
     set_buckets_a64fx_scaled(matrix);
 #else
@@ -295,11 +320,17 @@ usage:
         }
 
         for (int rep = 0; rep < 2; ++rep) {
-#if USE_SCALED_REUSE
-            reuse_scaled(tid, pc, sc, matrix);
-#else
-            reuse_calc(tid, pc, sc, matrix);
-#endif /* USE_SCALED_REUSE */
+            switch (conf) {
+            case SECTOR0:
+                reuse_sector0(tid, pc, sc, matrix);
+                break;
+            case SECTOR1:
+                reuse_sector1(tid, pc, sc, matrix);
+                break;
+            default:
+                /* unreachable */
+                break;
+            }
 
             if (rep == 0) {
                 pc.reset_buckets();
@@ -308,20 +339,21 @@ usage:
 #pragma omp single
                 time = omp_get_wtime();
             }
-        } /* parallel */
+        }
 
         if (verbose) {
 #pragma omp barrier
 #pragma omp single
             {
-                fprintf(stderr, "matrix: %s, time: %f sec\n", matrix_path, omp_get_wtime() - time);
-                fprintf(overhead_csv_file, "%s, %f\n", matrix_path, omp_get_wtime() - time);
+                double time_diff = omp_get_wtime() - time;
+                fprintf(stderr, "matrix: %s, time: %f sec\n", matrix_path, time_diff);
+                fprintf(overhead_csv_file, "%s, %f\n", matrix_path, time_diff);
             }
         }
 
 #pragma omp critical
         pc.print_csv(csv_file, matrix, tid);
-    }
+    } /* parallel */
 
     size_t i = 0u;
     for (auto &sc : shared_caches) {
@@ -331,3 +363,41 @@ usage:
     fclose(csv_file);
     fclose(overhead_csv_file);
 }
+
+#if 0
+void make_numa(matrix_csr<double, uint32_t, uint32_t> &matrix)
+{
+    // printf("rowptr 0: %d\n", matrix.row_ptr[0]);
+    uint32_t *colidx_ = (uint32_t *)malloc(sizeof(uint32_t) * matrix.nnz);
+    uint32_t *rowptr_ = (uint32_t *)malloc(sizeof(uint32_t) * (matrix.nrow + 1));
+#    pragma omp parallel
+#    pragma omp for
+    for (unsigned r = 0; r < matrix.nrow + 1; ++r) {
+        rowptr_[r] = matrix.row_ptr[r];
+        for (unsigned i = matrix.row_ptr[r]; i < matrix.row_ptr[r + 1]; ++i) {
+            colidx_[i] = matrix.col_idx[i];
+        }
+    }
+    rowptr_[matrix.nrow] = matrix.row_ptr[matrix.nrow];
+
+    free(matrix.row_ptr);
+    free(matrix.col_idx);
+    matrix.row_ptr = rowptr_;
+    matrix.col_idx = colidx_;
+}
+#endif
+
+#if CALCULATE_NNZ_PER_ROW_VARIANCE
+double variance = 0.0;
+
+double avg_nnzs_per_row = (double)matrix.nnz / matrix.nrow;
+for (unsigned r = 0; r < matrix.nrow; ++r) {
+    int nnzs = matrix.row_ptr[r + 1] - matrix.row_ptr[r];
+    variance += ((double)nnzs - avg_nnzs_per_row) * ((double)nnzs - avg_nnzs_per_row);
+}
+variance /= matrix.nrow;
+FILE *varfile = fopen("variance.csv", "a");
+fprintf(varfile, "%s,%f,%f\n", matrix_path, variance, variance / avg_nnzs_per_row);
+fclose(varfile);
+exit(0);
+#endif
