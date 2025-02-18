@@ -279,6 +279,10 @@ usage:
 
     matrix_csr<val_t, rowptr_t, colidx_t> matrix;
     read_matrix(matrix, matrix_path);
+    
+    // matrix values are not required ==> free to make space for reuse distance algorithm
+    free(matrix.val);
+    matrix.val = nullptr;
 
     char *needle = strrchr(matrix_path, '/');
     matrix.name  = needle ? needle + 1 : matrix_path;

@@ -20,12 +20,12 @@ struct matrix_csr {
     RT *restrict row_ptr{nullptr};
     CT *restrict col_idx{nullptr};
 
-    uint64_t nrow;
-    uint64_t ncol;
-    uint64_t nnz;
+    uint64_t nrow{0u};
+    uint64_t ncol{0u};
+    uint64_t nnz{0u};
 
-    const char *name;
-    bool        symmetric;
+    const char *name{nullptr};
+    bool        symmetric{false};
 
     struct coo_entry {
         VT val;
