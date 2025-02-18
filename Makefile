@@ -6,7 +6,7 @@ HEADERS:=$(wildcard *.h)
 SOURCES:=$(wildcard *.cpp)
 OBJECTS:=$(SOURCES:.cpp=.o)
 
-CXXFLAGS?=-std=c++17 -fconcepts-ts -fopenmp -Ofast -march=native -mtune=native -flto #-fwhole-program
+CXXFLAGS?=-std=c++20 -fopenmp -Ofast -march=native -mtune=native -flto #-fwhole-program
 
 CXXFLAGS+=-DNDEBUG
 CXXFLAGS+=-g3 -Wall -Wextra
