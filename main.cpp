@@ -115,11 +115,11 @@ void reuse_sector0(int tid, PrivateCache &pc, SharedCache &sc, const auto &matri
     for (unsigned r = 0; r < matrix.nrow; ++r) {
         // fprintf(stderr, "row: %d\n", r);
         for (rowptr_t i = matrix.row_ptr[r]; i < matrix.row_ptr[r + 1]; ++i) {
-            auto cl = cline<val_t, MEMBLOCKLEN>(matrix.col_idx[i]);
+            auto cl_x = cline<val_t, MEMBLOCKLEN>(matrix.col_idx[i]);
             // printf("row: %u, coldix: %u, cline: %lu val: %f i: %u\n", r,
-            // matrix.col_idx[i], cl, matrix.val[i], i);
-            pc.handle_cline(cl);
-            sc.handle_cline_shared(tid, cl);
+            // matrix.col_idx[i], cl_x, matrix.val[i], i);
+            pc.handle_cline(cl_x);
+            sc.handle_cline_shared(tid, cl_x);
         }
     }
 }
@@ -213,9 +213,6 @@ void reuse_sector1(int tid, PrivateCache &pc, SharedCache &sc, const auto &matri
             auto cl_col = cl_col_start + cline<colidx_t, MEMBLOCKLEN>(i);
             pc.handle_cline(cl_col);
 
-            // x[col_idx[i]]
-            auto cl_x = cline<val_t, MEMBLOCKLEN>(matrix.col_idx[i]);
-            pc.handle_cline(cl_x);
             sc.handle_clines_shared(tid, cl_a, cl_col);
         }
     }

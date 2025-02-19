@@ -4,13 +4,14 @@
 #PJM -g jh180024o
 #PJM -L rscgrp=regular-o
 #PJM -L node=1
-#PJM --mpi proc=48
-#PJM --omp thread=1
+#PJM --mpi proc=1
+#PJM --omp thread=48
 #PJM -L elapse=12:00:00
-#PJM -o spmvrd-stdout.txt
-#PJM -e spmvrd-stderr.txt
+#PJM -o spmvrd-48threads-stdout.txt
+#PJM -e spmvrd-48threads-stderr.txt
 
 export LC_ALL=C
+
 export OMP_PROC_BIND=close
 export OMP_PLACES=cores
 export OMP_WAIT_POLICY=active
