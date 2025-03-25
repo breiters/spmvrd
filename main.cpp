@@ -53,62 +53,6 @@ void set_buckets_a64fx(const auto &matrix)
     std::sort(Bucket::min_dists.begin(), Bucket::min_dists.end());
 }
 
-void set_buckets_a64fx_scaled(const auto &matrix)
-{
-    // required buckets for a64fx:
-    // 4-way L1d 64KiB => 4 Buckets with distance 64KiB / 4
-    // 16-way L2 8MiB => 16 Buckets with distance 8MiB / 16
-    //
-    int KiB = 1024;
-    int MiB = 1024 * KiB;
-
-    int L1ways = 4;
-    int L2ways = 16;
-
-    int L1d_capacity_per_way = 64 * KiB / 4;
-    int L2_capacity_per_way  = 8 * MiB / 16;
-
-    Bucket::min_dists.push_back(0);
-
-    double min_scale_nosc =
-        (double)sizeof(val_t) / ((double)(sizeof(rowptr_t) + sizeof(y_t)) * (double)matrix.nrow / matrix.nnz +
-                                 sizeof(val_t) + sizeof(colidx_t) + sizeof(x_t));
-
-    double min_scale_sc = (double)sizeof(val_t) /
-                          ((double)(sizeof(rowptr_t) + sizeof(y_t)) * (double)matrix.nrow / matrix.nnz + sizeof(x_t));
-
-#if USE_ONLY_X_IN_TEMPORAL_SECTOR
-    min_scale_sc = 1.0;
-#endif
-
-    for (int i = 0; i < L1ways; i++) {
-        Bucket::min_type min = min_scale_sc * L1d_capacity_per_way * (i + 1) / MEMBLOCKLEN;
-        Bucket::min_dists.push_back(min);
-    }
-
-    for (int i = 0; i < L2ways; i++) {
-        Bucket::min_type min = min_scale_sc * L2_capacity_per_way * (i + 1) / MEMBLOCKLEN;
-        Bucket::min_dists.push_back(min);
-    }
-
-    Bucket::min_dists.push_back(min_scale_nosc * 64 * KiB / MEMBLOCKLEN);
-    Bucket::min_dists.push_back(min_scale_nosc * 8 * MiB / MEMBLOCKLEN);
-
-    // bucket for cold misses (infinite reuse distance)
-    Bucket::min_dists.push_back(Bucket::INF_DIST);
-
-    // remove duplicated buckets
-    auto &vec = Bucket::min_dists;
-    vec.erase(std::unique(vec.begin(), vec.end()), vec.end());
-
-    // sort buckets in ascending order
-    std::sort(Bucket::min_dists.begin(), Bucket::min_dists.end());
-
-    for (auto b : Bucket::min_dists) {
-        eprintf("Bucket order: %lu\n", b);
-    }
-}
-
 void reuse_sector0(int tid, PrivateCache &pc, SharedCache &sc, const auto &matrix)
 {
 #pragma omp for
@@ -118,9 +62,11 @@ void reuse_sector0(int tid, PrivateCache &pc, SharedCache &sc, const auto &matri
             auto cl_x = cline<val_t, MEMBLOCKLEN>(matrix.col_idx[i]);
             // printf("row: %u, coldix: %u, cline: %lu val: %f i: %u\n", r,
             // matrix.col_idx[i], cl_x, matrix.val[i], i);
-            pc.handle_cline(cl_x);
+            // pc.handle_cline(cl_x);
             sc.handle_cline_shared(tid, cl_x);
         }
+        // pc.row_count_++;
+        sc.row_count_++;
     }
 }
 
@@ -304,7 +250,8 @@ usage:
 
     std::array<SharedCache, num_shared_caches> shared_caches{};
 
-    fprintf(csv_file, "matrix,nnz,nrows,cache_id,shared,mindist,count\n");
+    // fprintf(csv_file, "matrix,nnz,nrows,cache_id,shared,mindist,count\n");
+    fprintf(csv_file, "matrix,nnz,nrows,cache_id,shared,mindist,count_x,count_xy,count_xya\n");
     double time;
 
 #pragma omp parallel
@@ -364,41 +311,3 @@ usage:
     fclose(csv_file);
     fclose(overhead_csv_file);
 }
-
-#if 0
-void make_numa(matrix_csr<double, uint32_t, uint32_t> &matrix)
-{
-    // printf("rowptr 0: %d\n", matrix.row_ptr[0]);
-    uint32_t *colidx_ = (uint32_t *)malloc(sizeof(uint32_t) * matrix.nnz);
-    uint32_t *rowptr_ = (uint32_t *)malloc(sizeof(uint32_t) * (matrix.nrow + 1));
-#    pragma omp parallel
-#    pragma omp for
-    for (unsigned r = 0; r < matrix.nrow + 1; ++r) {
-        rowptr_[r] = matrix.row_ptr[r];
-        for (unsigned i = matrix.row_ptr[r]; i < matrix.row_ptr[r + 1]; ++i) {
-            colidx_[i] = matrix.col_idx[i];
-        }
-    }
-    rowptr_[matrix.nrow] = matrix.row_ptr[matrix.nrow];
-
-    free(matrix.row_ptr);
-    free(matrix.col_idx);
-    matrix.row_ptr = rowptr_;
-    matrix.col_idx = colidx_;
-}
-#endif
-
-#if CALCULATE_NNZ_PER_ROW_VARIANCE
-double variance = 0.0;
-
-double avg_nnzs_per_row = (double)matrix.nnz / matrix.nrow;
-for (unsigned r = 0; r < matrix.nrow; ++r) {
-    int nnzs = matrix.row_ptr[r + 1] - matrix.row_ptr[r];
-    variance += ((double)nnzs - avg_nnzs_per_row) * ((double)nnzs - avg_nnzs_per_row);
-}
-variance /= matrix.nrow;
-FILE *varfile = fopen("variance.csv", "a");
-fprintf(varfile, "%s,%f,%f\n", matrix_path, variance, variance / avg_nnzs_per_row);
-fclose(varfile);
-exit(0);
-#endif

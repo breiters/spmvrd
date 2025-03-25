@@ -7,6 +7,7 @@
 #include <cstdio>
 #include <utility>
 
+#if 0
 void Cache::on_next_bucket_gets_active()
 {
     // set new buckets marker to end of stack first then set marker to last stack element
@@ -35,6 +36,7 @@ void Cache::on_next_bucket_gets_active()
     check_consistency();
 #endif /* RD_DEBUG */
 }
+#endif
 
 /**
  * @brief Adds new memory block to top of stack. Moves active bucket markers.
@@ -47,6 +49,7 @@ StackIterator Cache::on_block_new(MemoryBlock &&mb)
 {
     stack_.push_front(std::move(mb));
 
+#if 0
     // move markers upwards after inserting new block on stack
     move_markers(next_bucket_ - 1);
 
@@ -59,37 +62,22 @@ StackIterator Cache::on_block_new(MemoryBlock &&mb)
     check_consistency();
 #endif /* RD_DEBUG */
 
+
+#endif
     return stack_.begin();
 }
 
+#if 0
 /**
  * @brief
  *
  * @param blockIt
  */
-int Cache::on_block_seen(StackIterator &blockIt)
+auto Cache::on_block_seen(StackIterator &blockIt)
 {
-    // if already on top of stack: do nothing (bucket is zero anyway)
-    if (blockIt == stack_.begin()) {
-        return 0;
-    }
-
-    // move all markers below current memory blocks bucket
-    int bucket = blockIt->bucket;
-    move_markers(bucket);
-
-    // put current memory block on top of stack
-    stack_.splice(stack_.begin(), stack_, blockIt);
-
-    // bucket of blockIt is zero now because it is on top of stack
-    blockIt->bucket = 0;
-
-#if RD_DEBUG > 1
-    check_consistency();
-#endif /* RD_DEBUG */
-
-    return bucket;
+    
 }
+#endif
 
 /**
  * Sanity check:
@@ -122,7 +110,7 @@ void Cache::check_consistency()
 void Cache::move_markers(unsigned topBucket)
 {
     assert(topBucket < next_bucket_);
-
+#if 0
     for (unsigned b = 1; b <= topBucket; b++) {
         assert(buckets_[next_bucket_].marker != stack_.begin());
 
@@ -132,4 +120,5 @@ void Cache::move_markers(unsigned topBucket)
         // increment bucket of memory block where current marker points to
         (buckets_[b].marker)->bucket++;
     }
+#endif
 }
