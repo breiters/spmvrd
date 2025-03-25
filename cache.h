@@ -65,7 +65,7 @@ public:
             auto bucket = on_block_seen(map_it->second);
             incr_access(bucket);
             refmap_[addr]->nnz_count = nnz_count_;
-            refmap_[addr]->nnz_count = row_count_;
+            refmap_[addr]->row_count = row_count_;
         }
 
         nnz_count_++;
