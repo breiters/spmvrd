@@ -48,20 +48,24 @@ class Cache
 public:
     void handle_cline(Addr addr)
     {
+#if 0
         if (addr == last_) {
             incr_access(std::make_tuple(0, 0, 0));
             return;
         }
         last_ = addr;
+#endif
 
         auto map_it = refmap_.find(addr);
 
         if (map_it == refmap_.end()) {
-            refmap_[addr] = on_block_new(MemoryBlock{});
+            refmap_[addr] = on_block_new(MemoryBlock{0, nnz_count_, row_count_});
             incr_access_inf();
         } else {
             auto bucket = on_block_seen(map_it->second);
             incr_access(bucket);
+            refmap_[addr]->nnz_count = nnz_count_;
+            refmap_[addr]->nnz_count = row_count_;
         }
 
         nnz_count_++;
@@ -121,8 +125,8 @@ public:
             }
         }
 
-        printf("reuse distances: %zu, %zu, %zu\n", reuse_distance_x, reuse_distance_xy, reuse_distance_xya);
-        printf("buckets: %zu, %zu, %zu\n", bucket_x, bucket_xy, bucket_xya);
+        // printf("reuse distances: %zu, %zu, %zu\n", reuse_distance_x, reuse_distance_xy, reuse_distance_xya);
+        // printf("buckets: %zu, %zu, %zu\n", bucket_x, bucket_xy, bucket_xya);
 
         // put current memory block on top of stack
         stack_.splice(stack_.begin(), stack_, it);
