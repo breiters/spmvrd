@@ -59,7 +59,7 @@ public:
         auto map_it = refmap_.find(addr);
 
         if (map_it == refmap_.end()) {
-            refmap_[addr] = on_block_new(MemoryBlock{0, nnz_count_, row_count_});
+            refmap_[addr] = on_block_new(MemoryBlock{0, row_count_, nnz_count_});
             incr_access_inf();
         } else {
             auto bucket = on_block_seen(map_it->second);
