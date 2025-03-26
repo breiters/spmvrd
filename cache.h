@@ -107,6 +107,10 @@ public:
         if (bucket >= bucket_before_inf) {
             return {bucket_before_inf, bucket_before_inf, bucket_before_inf};
         }
+        else if(Bucket::min_dists[bucket] + ncl_row_y >= Bucket::min_dists[bucket_before_inf]) {
+            // if min reuse distance of xy is in last bucket before infinite reuse distance, return
+            return {bucket, bucket_before_inf, bucket_before_inf};
+        }
 
         // else get exact reuse distance
         auto next_marker = buckets_[bucket + 1].marker;
