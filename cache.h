@@ -112,18 +112,28 @@ public:
         // get current bucket
         unsigned bucket = it->bucket;
 
+        Bucket::Counts result = {bucket, bucket, bucket};
+
+        size_t reuse_distance_xy  = ncl_row_y;
+        size_t reuse_distance_xya = ncl_row_y + ncl_col_a;
+
+        unsigned bucket_xy  = bucket;
+        unsigned bucket_xya = bucket;
+
+        auto next_marker = buckets_[bucket + 1].marker;
+
         // if already in last bucket before infinite reuse distance, return
         auto bucket_before_inf = buckets_.size() - 2;
         if (bucket >= bucket_before_inf) {
-            return {bucket_before_inf, bucket_before_inf, bucket_before_inf};
+            result = {bucket_before_inf, bucket_before_inf, bucket_before_inf};
+            goto out;
         } else if (Bucket::min_dists[bucket] + ncl_row_y >= Bucket::min_dists[bucket_before_inf]) {
             // if min reuse distance of xy is in last bucket before infinite reuse distance, return
-            return {bucket, bucket_before_inf, bucket_before_inf};
+            result = {bucket, bucket_before_inf, bucket_before_inf};
+            goto out;
         }
 
         // else get exact reuse distance
-
-        auto next_marker = buckets_[bucket + 1].marker;
 
         // first get distance to next marker in stack
         size_t distance;
@@ -137,28 +147,32 @@ public:
         if (next_marker != stack_.end()) {
             // forward distance
             distance = bounded_distance(it, next_marker, ncl_row_y + ncl_col_a);
+
             // fast path if next marker not reached
-            if (distance <= ncl_row_y + ncl_col_a) {
-                return {bucket, bucket, bucket};
+            if (distance < (ncl_row_y + ncl_col_a)) {
+                result = {bucket, bucket, bucket};
+                goto out;
             }
+
             reuse_distance_x = Bucket::min_dists[bucket + 1] - distance;
         } else {
             // backward distance
-            distance = bounded_distance(buckets_[bucket].marker, it, ncl_row_y + ncl_col_a);
+            // distance = bounded_distance(buckets_[bucket].marker, it, ncl_row_y + ncl_col_a);
+            distance = std::distance(buckets_[bucket].marker, it);
+
             // fast path if next marker not reached
-            if (distance <= ncl_row_y + ncl_col_a) {
-                return {bucket, bucket, bucket};
+            if (distance >= (ncl_row_y + ncl_col_a)) {
+                result = {bucket, bucket, bucket};
+                goto out;
             }
+
             reuse_distance_x = Bucket::min_dists[bucket] + distance;
         }
 
-        size_t reuse_distance_xy  = reuse_distance_x + ncl_row_y;
-        size_t reuse_distance_xya = reuse_distance_x + ncl_row_y + ncl_col_a;
+        reuse_distance_xy += reuse_distance_x;
+        reuse_distance_xya += reuse_distance_x;
 
         // compute buckets of policy xy and policy xya
-        unsigned bucket_xy  = bucket;
-        unsigned bucket_xya = bucket;
-
         for (auto b = bucket + 1; b < buckets_.size(); ++b) {
             auto min_distance = Bucket::min_dists[b];
             if (min_distance <= reuse_distance_xy) {
@@ -171,6 +185,8 @@ public:
 
         // printf("reuse distances: %zu, %zu, %zu\n", reuse_distance_x, reuse_distance_xy, reuse_distance_xya);
         // printf("buckets: %zu, %zu, %zu\n", bucket_x, bucket_xy, bucket_xya);
+
+out:
 
         // then move all markers below current memory block's bucket
         move_markers(bucket);

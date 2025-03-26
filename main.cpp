@@ -40,8 +40,11 @@ void set_buckets_a64fx(const auto &matrix)
 
     Bucket::min_dists.push_back(0);
 
+#define WANT_L1_CACHE_MISSES 1
+#if WANT_L1_CACHE_MISSES
     for (int i = 0; i < L1ways; i++)
         Bucket::min_dists.push_back(L1d_capacity_per_way * (i + 1) / MEMBLOCKLEN);
+#endif
 
     for (int i = 0; i < L2ways; i++)
         Bucket::min_dists.push_back(L2_capacity_per_way * (i + 1) / MEMBLOCKLEN);
@@ -66,11 +69,15 @@ void reuse_sector0(int tid, PrivateCache &pc, SharedCache &sc, const auto &matri
             auto cl_x = cline<val_t, MEMBLOCKLEN>(matrix.col_idx[i]);
             // printf("row: %u, coldix: %u, cline: %lu val: %f i: %u\n", r,
             // matrix.col_idx[i], cl_x, matrix.val[i], i);
-            // pc.handle_cline(cl_x);
+#if WANT_L1_CACHE_MISSES
+            pc.handle_cline(cl_x);
+#endif
             sc.handle_cline_shared(tid, cl_x);
         }
         /* TODO: this should be incremented in handle_cline */
-        // pc.row_count_++;
+#if WANT_L1_CACHE_MISSES
+        pc.row_count_++;
+#endif
         sc.row_count_++;
     }
 }
