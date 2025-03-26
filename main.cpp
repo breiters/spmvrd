@@ -59,7 +59,7 @@ void set_buckets_a64fx(const auto &matrix)
 
 void reuse_sector0(int tid, PrivateCache &pc, SharedCache &sc, const auto &matrix)
 {
-#pragma omp for
+#pragma omp for schedule(static)
     for (unsigned r = 0; r < matrix.nrow; ++r) {
         // fprintf(stderr, "row: %d\n", r);
         for (rowptr_t i = matrix.row_ptr[r]; i < matrix.row_ptr[r + 1]; ++i) {
@@ -93,7 +93,7 @@ void reuse_calc2(int tid, PrivateCache &pc, SharedCache &sc, const auto &matrix)
     sc.handle_cline_shared(tid, cl_row);
 #endif
 
-#pragma omp for
+#pragma omp for schedule(static)
     for (unsigned r = 0; r < matrix.nrow; ++r) {
         // fprintf(stderr, "row: %d\n", r);
 #if !USE_ONLY_X_IN_TEMPORAL_SECTOR || USE_CALC_NOSC_REUSE
@@ -145,7 +145,7 @@ void reuse_sector1(int tid, PrivateCache &pc, SharedCache &sc, const auto &matri
     pc.handle_cline(cl_row);
     sc.handle_cline_shared(tid, cl_row);
 
-#pragma omp for
+#pragma omp for schedule(static)
     for (unsigned r = 0; r < matrix.nrow; ++r) {
         // rowptr[r + 1]
         auto cl_row_plus1 = cl_row_start + cline<rowptr_t, MEMBLOCKLEN>(r + 1);
@@ -227,7 +227,7 @@ usage:
 
     matrix_csr<val_t, rowptr_t, colidx_t> matrix;
     read_matrix(matrix, matrix_path);
-    
+
     // matrix values are not required ==> free to make space for reuse distance algorithm
     free(matrix.val);
     matrix.val = nullptr;
