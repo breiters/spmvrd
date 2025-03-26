@@ -6,10 +6,11 @@ HEADERS:=$(wildcard *.h)
 SOURCES:=$(wildcard *.cpp)
 OBJECTS:=$(SOURCES:.cpp=.o)
 
-CXXFLAGS?=-std=c++20 -fopenmp -Ofast -march=native -mtune=native -flto #-fwhole-program
+CXXFLAGS?=-std=c++20 -fopenmp -Ofast -march=native -mtune=native -flto
 
 CXXFLAGS+=-DNDEBUG
-CXXFLAGS+=-g3 -Wall -Wextra #-Weffc++
+CXXFLAGS+=-g3 -Wall -Wextra -Wpedantic
+# CXXFLAGS+=-Weffc++
 CXXFLAGS+=-Wno-sign-compare -Wno-sign-conversion
 CXXFLAGS+=-Wno-unused-parameter -Wno-unused-function
 CXXFLAGS+=-Wno-unused-variable -Wno-unused-but-set-variable

@@ -49,6 +49,10 @@ void set_buckets_a64fx(const auto &matrix)
     // bucket for cold misses (infinite reuse distance)
     Bucket::min_dists.push_back(Bucket::INF_DIST);
 
+    // remove duplicated buckets (if any)
+    auto &vec = Bucket::min_dists;
+    vec.erase(std::unique(vec.begin(), vec.end()), vec.end());
+
     // sort buckets in ascending order
     std::sort(Bucket::min_dists.begin(), Bucket::min_dists.end());
 }
@@ -65,6 +69,7 @@ void reuse_sector0(int tid, PrivateCache &pc, SharedCache &sc, const auto &matri
             // pc.handle_cline(cl_x);
             sc.handle_cline_shared(tid, cl_x);
         }
+        /* TODO: this should be incremented in handle_cline */
         // pc.row_count_++;
         sc.row_count_++;
     }
@@ -210,7 +215,7 @@ usage:
         goto usage;
 
     char overhead_csv_path[1024];
-    snprintf(overhead_csv_path, 1024, "overhead%03dt.csv", omp_get_max_threads());
+    snprintf(overhead_csv_path, 1024, "overhead-%03dthreads.csv", omp_get_max_threads());
 
     FILE *overhead_csv_file = fopen(overhead_csv_path, "a");
     if (!overhead_csv_file) {
@@ -251,7 +256,7 @@ usage:
     std::array<SharedCache, num_shared_caches> shared_caches{};
 
     // fprintf(csv_file, "matrix,nnz,nrows,cache_id,shared,mindist,count\n");
-    fprintf(csv_file, "matrix,nnz,nrows,cache_id,shared,mindist,count_x,count_xy,count_xya\n");
+    fprintf(csv_file, Cache::csv_header_);
     double time;
 
 #pragma omp parallel

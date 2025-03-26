@@ -48,22 +48,21 @@ class Cache
 public:
     void handle_cline(Addr addr)
     {
-#if 0
         if (addr == last_) {
-            incr_access(std::make_tuple(0, 0, 0));
+            incr_access({0u, 0u, 0u});
+            stack_.begin()->nnz_count = nnz_count_;
+            nnz_count_++;
             return;
         }
         last_ = addr;
-#endif
 
         auto map_it = refmap_.find(addr);
 
         if (map_it == refmap_.end()) {
-            refmap_[addr] = on_block_new(MemoryBlock{0, row_count_, nnz_count_});
+            refmap_[addr] = on_block_new(MemoryBlock{0u, row_count_, nnz_count_});
             incr_access_inf();
         } else {
-            auto bucket = on_block_seen(map_it->second);
-            incr_access(bucket);
+            incr_access(on_block_seen(map_it->second));
             refmap_[addr]->nnz_count = nnz_count_;
             refmap_[addr]->row_count = row_count_;
         }
@@ -73,26 +72,25 @@ public:
 
     StackIterator on_block_new(MemoryBlock &&mb);
 
-    template <typename Buckets>
-    void incr_access(Buckets &&bucket)
+    void incr_access(Bucket::Counts &&bucket)
     {
         auto [bx, bxy, bxya] = bucket;
-        buckets_x_[bx].access_count++;
-        buckets_xy_[bxy].access_count++;
-        buckets_xya_[bxya].access_count++;
+        buckets_[bx].access_counts.count_x++;
+        buckets_[bxy].access_counts.count_xy++;
+        buckets_[bxya].access_counts.count_xya++;
     }
 
     void incr_access_inf()
     {
         auto bucket_inf = Bucket::min_dists.size() - 1;
-        incr_access(std::make_tuple(bucket_inf, bucket_inf, bucket_inf));
+        incr_access({bucket_inf, bucket_inf, bucket_inf});
     }
 
-    std::tuple<int, int, int> on_block_seen(StackIterator &it)
+    Bucket::Counts on_block_seen(StackIterator &it)
     {
         // if already on top of stack: do nothing (bucket is zero anyway)
         if (it == stack_.begin()) {
-            return {};
+            return {0u, 0u, 0u};
         }
 
         // compute additional distance due to y and rowptr
@@ -101,22 +99,45 @@ public:
         // compute additional distance due to a and colidx
         auto ncl_col_a = (nnz_count_ - it->nnz_count) * 12 / 256;
 
-        // get depth in stack
-        auto reuse_distance_x   = std::distance(stack_.begin(), it);
-        auto reuse_distance_xy  = reuse_distance_x + ncl_row_y;
-        auto reuse_distance_xya = reuse_distance_x + ncl_row_y + ncl_col_a;
+        // get current bucket
+        unsigned bucket = it->bucket;
 
-        // compute buckets
-        int bucket_x   = 0;
-        int bucket_xy  = 0;
-        int bucket_xya = 0;
-        for (auto min_distance : Bucket::min_dists) {
-            // skip first bucket
-            if(min_distance == 0) continue;
+        // if already in last bucket before infinite reuse distance, return
+        auto bucket_before_inf = buckets_.size() - 2;
+        if (bucket >= bucket_before_inf) {
+            return {bucket_before_inf, bucket_before_inf, bucket_before_inf};
+        }
 
-            if (min_distance <= reuse_distance_x) {
-                ++bucket_x;
-            }
+        // else get exact reuse distance
+        auto next_marker = buckets_[bucket + 1].marker;
+
+        // first get distance to next marker in stack
+        size_t distance;
+        
+        // exact reuse distance is either:
+        // - next marker's min. reuse distance minus distance (forward)
+        // - current marker's min. reuse distance plus distance (backward)
+        size_t reuse_distance_x;
+
+        if (next_marker != stack_.end()) {
+            // forward distance
+            distance = std::distance(it, next_marker);
+            reuse_distance_x   = Bucket::min_dists[bucket + 1] - distance;
+        } else {
+            // backward distance
+            distance = std::distance(buckets_[bucket].marker, it);
+            reuse_distance_x   = Bucket::min_dists[bucket] + distance;
+        }
+
+        size_t reuse_distance_xy  = reuse_distance_x + ncl_row_y;
+        size_t reuse_distance_xya = reuse_distance_x + ncl_row_y + ncl_col_a;
+
+        // compute buckets of policy xy and policy xya
+        unsigned bucket_xy  = bucket;
+        unsigned bucket_xya = bucket;
+
+        for (auto b = bucket + 1; b < buckets_.size(); ++b) {
+            auto min_distance = Bucket::min_dists[b];
             if (min_distance <= reuse_distance_xy) {
                 ++bucket_xy;
             }
@@ -128,13 +149,20 @@ public:
         // printf("reuse distances: %zu, %zu, %zu\n", reuse_distance_x, reuse_distance_xy, reuse_distance_xya);
         // printf("buckets: %zu, %zu, %zu\n", bucket_x, bucket_xy, bucket_xya);
 
+        // then move all markers below current memory block's bucket
+        move_markers(bucket);
+
         // put current memory block on top of stack
         stack_.splice(stack_.begin(), stack_, it);
 
         // bucket of blockIt is zero now because it is on top of stack
-        it->bucket = 0;
+        it->bucket = 0u;
 
-        return {bucket_x, bucket_xy, bucket_xya};
+#if RD_DEBUG > 1
+        check_consistency();
+#endif /* RD_DEBUG */
+
+        return {bucket, bucket_xy, bucket_xya};
     }
 
 #if 0
@@ -145,60 +173,36 @@ public:
 
     // void increment_row_count() { row_count_++; }
 
+    static constexpr const char *csv_header_ =
+        "matrix,nnz,nrows,cache_id,shared,working_set,mindist,count_x,count_xy,count_xya\n";
     void print_csv(FILE *file, const auto &matrix, int id) const
     {
+        size_t working_set_size = refmap_.size();
         for (size_t i = 0u; i != Bucket::min_dists.size(); ++i) {
             // matrix name, nnz, nrow, cache id, shared, min bucket, count
             fprintf(file,
-                    "%s,%zu,%zu,%d,%d,%lu,%lu,%lu,%lu\n",
+                    "%s,%zu,%zu,%d,%d,%zu,%lu,%lu,%lu,%lu\n",
                     matrix.name,
                     matrix.nnz,
                     matrix.nrow,
                     id,
                     shared_,
+                    working_set_size,
                     Bucket::min_dists[i],
-                    buckets_x_[i].access_count,
-                    buckets_xy_[i].access_count,
-                    buckets_xya_[i].access_count
-                );
+                    buckets_[i].access_counts.count_x,
+                    buckets_[i].access_counts.count_xy,
+                    buckets_[i].access_counts.count_xya);
         }
     }
-#if 0
-    void print_csv2(FILE *file, const auto &matrix, int id) const
-    {
-        size_t i = 0u;
-        for (auto &b : buckets_) {
-            // matrix name, nnz, nrow, cache id, shared, min bucket, count
-            fprintf(file,
-                    "%s,%zu,%zu,%d,%d,%lu,%lu\n",
-                    matrix.name,
-                    matrix.nnz,
-                    matrix.nrow,
-                    id,
-                    shared_,
-                    Bucket::min_dists[i],
-                    b.access_count);
-            ++i;
-        }
-    }
-#endif
+
     void reset_buckets()
     {
-        // for (auto &b : buckets_)
-        // b.access_count = 0;
-
-        for (auto &b : buckets_x_)
-            b.access_count = 0;
-
-        for (auto &b : buckets_xy_)
-            b.access_count = 0;
-
-        for (auto &b : buckets_xya_)
-            b.access_count = 0;
+        for (auto &b : buckets_) {
+            b.access_counts = {0u, 0u, 0u};
+        }
     }
 
     std::atomic<uint32_t> row_count_{0u};
-    std::atomic<uint64_t> nnz_count_{0u};
 
 private:
     void move_markers(unsigned);
@@ -208,14 +212,12 @@ private:
     std::list<MemoryBlock>                  stack_{};
     std::unordered_map<Addr, StackIterator> refmap_{};
 
+    uint64_t nnz_count_{0u};
+
     Addr     last_{(Addr)-1};
     unsigned next_bucket_{1u};
 
-    // TODO: tuple of vectors, or vector of tuples?
-    using Buckets = std::tuple<std::vector<Bucket>, std::vector<Bucket>, std::vector<Bucket>>;
-    std::vector<Bucket> buckets_x_{std::vector<Bucket>{Bucket::min_dists.size()}};
-    std::vector<Bucket> buckets_xy_{std::vector<Bucket>{Bucket::min_dists.size()}};
-    std::vector<Bucket> buckets_xya_{std::vector<Bucket>{Bucket::min_dists.size()}};
+    std::vector<Bucket> buckets_{std::vector<Bucket>{Bucket::min_dists.size(), stack_.end()}};
 
 protected:
     bool shared_{false};
