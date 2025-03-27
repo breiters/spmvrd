@@ -84,6 +84,7 @@ public:
         incr_access({bucket_inf, bucket_inf, bucket_inf});
     }
 
+#if 0
     size_t bounded_distance(StackIterator first, StackIterator last, size_t bound)
     {
         size_t result{0u};
@@ -93,6 +94,7 @@ public:
         }
         return result;
     }
+#endif
 
     Bucket::Counts on_block_seen(StackIterator &it)
     {
@@ -120,6 +122,32 @@ public:
         unsigned bucket_xy  = bucket;
         unsigned bucket_xya = bucket;
 
+        size_t rd_min = Bucket::min_dists[bucket];
+        size_t rd_max = Bucket::min_dists[bucket + 1] - 1;
+        size_t rd_avg = (rd_min + rd_max) / 2;
+
+        size_t bucket_before_inf = buckets_.size() - 2;
+        if (bucket >= bucket_before_inf) {
+            result = {bucket_before_inf, bucket_before_inf, bucket_before_inf};
+        } else {
+            reuse_distance_xy += rd_avg;
+            reuse_distance_xya += rd_avg;
+
+            // compute buckets of policy xy and policy xya
+            for (size_t b = bucket + 1; b < buckets_.size(); ++b) {
+                auto min_distance = Bucket::min_dists[b];
+                if (min_distance >= reuse_distance_xy) {
+                    ++bucket_xy;
+                }
+                if (min_distance >= reuse_distance_xya) {
+                    ++bucket_xya;
+                }
+            }
+
+            result = {bucket, bucket_xy, bucket_xya};
+        }
+
+#if 0
         auto next_marker = buckets_[bucket + 1].marker;
 
         // if already in last bucket before infinite reuse distance, return
@@ -187,6 +215,7 @@ public:
         // printf("buckets: %zu, %zu, %zu\n", bucket_x, bucket_xy, bucket_xya);
 
 out:
+#endif
 
         // then move all markers below current memory block's bucket
         move_markers(bucket);
@@ -201,7 +230,7 @@ out:
         check_consistency();
 #endif /* RD_DEBUG */
 
-        return {bucket, bucket_xy, bucket_xya};
+        return result;
     }
 
 #if 0
