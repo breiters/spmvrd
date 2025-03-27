@@ -51,6 +51,7 @@ public:
             stack_.begin()->nnz_count = nnz_count_;
             stack_.begin()->row_count = row_count_;
             nnz_count_++;
+            reuse_count_++;
             return;
         }
         last_ = addr;
