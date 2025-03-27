@@ -265,6 +265,7 @@ usage:
     // fprintf(csv_file, "matrix,nnz,nrows,cache_id,shared,mindist,count\n");
     fprintf(csv_file, Cache::csv_header_);
     double time;
+    double time_diff;
 
 #pragma omp parallel
     {
@@ -305,19 +306,19 @@ usage:
 #pragma omp barrier
 #pragma omp single
             {
-                double time_diff = omp_get_wtime() - time;
+                time_diff = omp_get_wtime() - time;
                 fprintf(stderr, "matrix: %s, time: %f sec\n", matrix_path, time_diff);
                 fprintf(overhead_csv_file, "%s, %f\n", matrix_path, time_diff);
             }
         }
 
 #pragma omp critical
-        pc.print_csv(csv_file, matrix, tid);
+        pc.print_csv(csv_file, matrix, tid, time_diff);
     } /* parallel */
 
     size_t i = 0u;
     for (auto &sc : shared_caches) {
-        sc.print_csv(csv_file, matrix, i);
+        sc.print_csv(csv_file, matrix, i, time_diff);
         ++i;
     }
     fclose(csv_file);
