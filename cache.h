@@ -183,6 +183,8 @@ public:
             }
         }
 
+        result = {bucket, bucket_xy, bucket_xya};
+
         // printf("reuse distances: %zu, %zu, %zu\n", reuse_distance_x, reuse_distance_xy, reuse_distance_xya);
         // printf("buckets: %zu, %zu, %zu\n", bucket_x, bucket_xy, bucket_xya);
 
@@ -201,7 +203,7 @@ out:
         check_consistency();
 #endif /* RD_DEBUG */
 
-        return {bucket, bucket_xy, bucket_xya};
+        return result;
     }
 
 #if 0
