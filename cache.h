@@ -95,20 +95,21 @@ public:
     }
 
     static constexpr const char *csv_header_ =
-        "matrix,nnz,nrows,cache_id,shared,time,working_set_size,reuses,mindist,count_x,count_xy,count_xya\n";
+        "matrix,nnz,nrows,cache_id,shared,time,nnz_count,working_set_size,reuses,mindist,count_x,count_xy,count_xya\n";
     void print_csv(FILE *file, const auto &matrix, int id, double time) const
     {
         size_t working_set_size = refmap_.size();
         for (size_t i = 0u; i != Bucket::min_dists.size(); ++i) {
             // matrix name, nnz, nrow, cache id, shared, min bucket, count
             fprintf(file,
-                    "%s,%zu,%zu,%d,%d,%f,%zu,%zu,%lu,%lu,%lu,%lu\n",
+                    "%s,%zu,%zu,%d,%d,%f,%zu,%zu,%zu,%lu,%lu,%lu,%lu\n",
                     matrix.name,
                     matrix.nnz,
                     matrix.nrow,
                     id,
                     shared_,
                     time,
+                    nnz_count_ / 2, // TODO: we are doing two rounds, thus the nnz count is doubled
                     working_set_size,
                     reuse_count_,
                     Bucket::min_dists[i],
@@ -139,7 +140,7 @@ private:
     uint64_t nnz_count_{0u};
     uint64_t reuse_count_{0u};
     uint32_t row_count_{0u};
-    
+
     unsigned next_bucket_{1u};
     Addr     last_{(Addr)-1};
 
