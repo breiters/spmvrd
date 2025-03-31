@@ -65,9 +65,16 @@ public:
             incr_access(on_block_seen(map_it->second));
             refmap_[addr]->nnz_count = nnz_count_;
             refmap_[addr]->row_count = row_count_;
+            reuse_count_++;
         }
 
         nnz_count_++;
+    }
+
+    void handle_cline(Addr addr, bool increment_row)
+    {
+        row_count_++;
+        handle_cline(addr);
     }
 
     Bucket::Counts on_block_seen(StackIterator &it);
@@ -86,8 +93,6 @@ public:
         auto bucket_inf = Bucket::min_dists.size() - 1;
         incr_access({bucket_inf, bucket_inf, bucket_inf});
     }
-
-    // void increment_row_count() { row_count_++; }
 
     static constexpr const char *csv_header_ =
         "matrix,nnz,nrows,cache_id,shared,time,working_set_size,reuses,mindist,count_x,count_xy,count_xya\n";
@@ -118,13 +123,10 @@ public:
         for (auto &b : buckets_) {
             b.access_counts = {0u, 0u, 0u};
         }
-
-        nnz_count_   = 0u;
-        row_count_   = 0u;
+        // nnz_count_   = 0u; // probably bad because of wrap-around
+        // row_count_   = 0u; // probably bad because of wrap-around
         reuse_count_ = 0u;
     }
-
-    std::atomic<uint32_t> row_count_{0u};
 
 private:
     void move_markers(unsigned);
@@ -136,9 +138,10 @@ private:
 
     uint64_t nnz_count_{0u};
     uint64_t reuse_count_{0u};
-
-    Addr     last_{(Addr)-1};
+    uint32_t row_count_{0u};
+    
     unsigned next_bucket_{1u};
+    Addr     last_{(Addr)-1};
 
     std::vector<Bucket> buckets_{
         std::vector<Bucket>{Bucket::min_dists.size(), stack_.end()}
@@ -157,6 +160,13 @@ public:
     {
         mcslock_.lock(tid);
         handle_cline(a);
+        mcslock_.unlock(tid);
+    }
+
+    void handle_cline_shared(int tid, Addr a, bool increment_row)
+    {
+        mcslock_.lock(tid);
+        handle_cline(a, increment_row);
         mcslock_.unlock(tid);
     }
 

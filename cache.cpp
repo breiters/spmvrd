@@ -77,11 +77,12 @@ void Cache::check_consistency()
     if (iter < DO_CHECK) {
         return;
     }
-    iter          = 0;
-    auto it_start = stack_.begin();
+    iter = 0;
+
+    auto     it       = stack_.begin();
+    unsigned distance = 0;
     for (unsigned b = 1; b < next_bucket_; b++) {
-        unsigned distance = 0;
-        for (auto it = it_start; it != buckets_[b].marker; it++) {
+        for (; it != buckets_[b].marker; it++) {
             assert(it != stack_.end());
             distance++;
         }
@@ -104,7 +105,6 @@ void Cache::move_markers(unsigned topBucket)
     }
 }
 
-
 Bucket::Counts Cache::on_block_seen(StackIterator &it)
 {
     reuse_count_++;
@@ -115,10 +115,10 @@ Bucket::Counts Cache::on_block_seen(StackIterator &it)
     }
 
     // compute additional distance due to y and rowptr
-    auto ncl_row_y = (row_count_ - it->row_count) * 16 / 256;
+    auto ncl_row_y = ((row_count_ - it->row_count) * 16) / 256;
 
     // compute additional distance due to a and colidx
-    auto ncl_col_a = (nnz_count_ - it->nnz_count) * 12 / 256;
+    auto ncl_col_a = ((nnz_count_ - it->nnz_count) * 12) / 256;
 
     // get current bucket
     unsigned bucket = it->bucket;
@@ -144,12 +144,18 @@ Bucket::Counts Cache::on_block_seen(StackIterator &it)
 
         // compute buckets of policy xy and policy xya
         for (size_t b = bucket + 1; b < buckets_.size(); ++b) {
+            bool done         = true;
             auto min_distance = Bucket::min_dists[b];
-            if (min_distance >= reuse_distance_xy) {
+            if (reuse_distance_xy >= min_distance) {
                 ++bucket_xy;
+                done = false;
             }
-            if (min_distance >= reuse_distance_xya) {
+            if (reuse_distance_xya >= min_distance) {
                 ++bucket_xya;
+                done = false;
+            }
+            if (done) {
+                break;
             }
         }
 
