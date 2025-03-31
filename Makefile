@@ -9,6 +9,7 @@ OBJECTS:=$(SOURCES:.cpp=.o)
 CXXFLAGS?=-std=c++20 -fopenmp -Ofast -march=native -mtune=native -flto
 
 CXXFLAGS+=-DNDEBUG
+# CXXFLAGS+=-pg -fno-inline
 CXXFLAGS+=-g3 -Wall -Wextra -Wpedantic
 # CXXFLAGS+=-Weffc++
 CXXFLAGS+=-Wno-sign-compare -Wno-sign-conversion

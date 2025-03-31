@@ -49,6 +49,10 @@ void set_buckets_a64fx(const auto &matrix)
     for (int i = 0; i < L2ways; i++)
         Bucket::min_dists.push_back(L2_capacity_per_way * (i + 1) / MEMBLOCKLEN);
 
+    // double resolution in most relevant region
+    for (int i = 0; i < L2ways; i++)
+        Bucket::min_dists.push_back((L2_capacity_per_way * (i + 1) - L2_capacity_per_way / 2) / MEMBLOCKLEN);
+
     // bucket for cold misses (infinite reuse distance)
     Bucket::min_dists.push_back(Bucket::INF_DIST);
 
@@ -69,16 +73,12 @@ void reuse_sector0(int tid, PrivateCache &pc, SharedCache &sc, const auto &matri
             auto cl_x = cline<val_t, MEMBLOCKLEN>(matrix.col_idx[i]);
             // printf("row: %u, coldix: %u, cline: %lu val: %f i: %u\n", r,
             // matrix.col_idx[i], cl_x, matrix.val[i], i);
+            bool first_nnz_in_row = (i == matrix.row_ptr[r]);
 #if WANT_L1_CACHE_MISSES
-            pc.handle_cline(cl_x);
+            pc.handle_cline(cl_x, first_nnz_in_row);
 #endif
-            sc.handle_cline_shared(tid, cl_x);
+            sc.handle_cline_shared(tid, cl_x, first_nnz_in_row);
         }
-        /* TODO: this should be incremented in handle_cline */
-#if WANT_L1_CACHE_MISSES
-        pc.row_count_++;
-#endif
-        sc.row_count_++;
     }
 }
 
@@ -221,6 +221,7 @@ usage:
     if (!matrix_path)
         goto usage;
 
+#if 0
     char overhead_csv_path[1024];
     snprintf(overhead_csv_path, 1024, "overhead-%03dthreads.csv", omp_get_max_threads());
 
@@ -229,11 +230,16 @@ usage:
         perror("fopen (overhead csv file)");
         exit(EXIT_FAILURE);
     }
+#endif
 
-    fprintf(stderr, "matrix: %s\n", matrix_path);
+#if !NDEBUG
+    fprintf(stderr, "[!!] running %s in debug mode [!!]\n", argv[0]);
+#endif
 
+    fprintf(stderr, "reading matrix: %s ...", matrix_path);
     matrix_csr<val_t, rowptr_t, colidx_t> matrix;
     read_matrix(matrix, matrix_path);
+    fprintf(stderr, " done!\n");
 
     // matrix values are not required ==> free to make space for reuse distance algorithm
     free(matrix.val);
@@ -308,7 +314,7 @@ usage:
             {
                 time_diff = omp_get_wtime() - time;
                 fprintf(stderr, "matrix: %s, time: %f sec\n", matrix_path, time_diff);
-                fprintf(overhead_csv_file, "%s, %f\n", matrix_path, time_diff);
+                // fprintf(overhead_csv_file, "%s, %f\n", matrix_path, time_diff);
             }
         }
 
@@ -322,5 +328,5 @@ usage:
         ++i;
     }
     fclose(csv_file);
-    fclose(overhead_csv_file);
+    // fclose(overhead_csv_file);
 }
