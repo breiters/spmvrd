@@ -267,6 +267,9 @@ usage:
 #endif /* USE_SCALED_REUSE */
 
     std::array<SharedCache, num_shared_caches> shared_caches{};
+    for(auto &sc : shared_caches) {
+        sc.set_refmap_size(matrix.ncol);
+    }
 
     // fprintf(csv_file, "matrix,nnz,nrows,cache_id,shared,mindist,count\n");
     fprintf(csv_file, Cache::csv_header_);
@@ -279,6 +282,8 @@ usage:
 
         PrivateCache pc{};
         SharedCache &sc = shared_caches[tid / threads_per_shared_cache];
+
+        pc.set_refmap_size(matrix.ncol);
 
         if (verbose) {
 #pragma omp barrier

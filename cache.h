@@ -56,13 +56,16 @@ public:
         }
         last_ = addr;
 
-        auto map_it = refmap_.find(addr);
+        // auto map_it = refmap_.find(addr);
+        StackIterator& it = refmap_[addr];
 
-        if (map_it == refmap_.end()) {
+        // if (map_it == refmap_.end()) {
+        if (it == stack_.end()) {
             incr_access_inf();
             refmap_[addr] = on_block_new(MemoryBlock{0u, row_count_, nnz_count_});
         } else {
-            incr_access(on_block_seen(map_it->second));
+            // incr_access(on_block_seen(map_it->second));
+            incr_access(on_block_seen(it));
             refmap_[addr]->nnz_count = nnz_count_;
             refmap_[addr]->row_count = row_count_;
             reuse_count_++;
@@ -129,13 +132,25 @@ public:
         reuse_count_ = 0u;
     }
 
+    void set_refmap_size(size_t nelem)
+    {
+        size_t nlines = nelem * 8 / 256 + 1;
+        // refmap_ = std::vector<StackIterator>(nlines, stack_.end());
+        refmap_.reserve(nlines);
+#pragma omp parallel for
+        for(size_t i = 0u; i != nlines; ++i) {
+            refmap_[i] = stack_.end();
+        }
+    }
+
 private:
     void move_markers(unsigned);
     void on_next_bucket_gets_active();
     void check_consistency(bool force);
 
     std::list<MemoryBlock>                  stack_{};
-    std::unordered_map<Addr, StackIterator> refmap_{};
+    // std::unordered_map<Addr, StackIterator> refmap_{};
+    std::vector<StackIterator> refmap_{};
 
     uint64_t nnz_count_{0u};
     uint64_t reuse_count_{0u};
