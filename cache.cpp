@@ -32,7 +32,7 @@ void Cache::on_next_bucket_gets_active()
     next_bucket_++;
 
 #if RD_DEBUG
-    check_consistency();
+    check_consistency(true);
 #endif /* RD_DEBUG */
 }
 
@@ -56,39 +56,10 @@ StackIterator Cache::on_block_new(MemoryBlock &&mb)
     }
 
 #if RD_DEBUG > 1
-    check_consistency();
+    check_consistency(false);
 #endif /* RD_DEBUG */
 
     return stack_.begin();
-}
-
-/**
- * Sanity check:
- * - every active marker must be found in stack in the right order
- * - distance of bucket marker to stack begin must be equal to the min distance for the
- * bucket
- */
-void Cache::check_consistency()
-{
-#if RD_DEBUG
-    const size_t  DO_CHECK = 10;
-    static size_t iter     = 0;
-    iter++;
-    if (iter < DO_CHECK) {
-        return;
-    }
-    iter = 0;
-
-    auto     it       = stack_.begin();
-    unsigned distance = 0;
-    for (unsigned b = 1; b < next_bucket_; b++) {
-        for (; it != buckets_[b].marker; it++) {
-            assert(it != stack_.end());
-            distance++;
-        }
-        assert(distance == Bucket::min_dists[b]);
-    }
-#endif /* RD_DEBUG */
 }
 
 void Cache::move_markers(unsigned topBucket)
@@ -242,8 +213,36 @@ out:
     it->bucket = 0u;
 
 #if RD_DEBUG > 1
-    check_consistency();
+    check_consistency(false);
 #endif /* RD_DEBUG */
 
     return result;
+}
+
+/**
+ * Sanity check:
+ * - every active marker must be found in stack in the right order
+ * - distance of bucket marker to stack begin must be equal to the min distance for the
+ * bucket
+ */
+void Cache::check_consistency(bool force)
+{
+#if RD_DEBUG
+    static size_t iter     = 0;
+    iter++;
+    if (!force && iter < RD_CONSISTENCY_CHECK_FREQUENCY) {
+        return;
+    }
+    iter = 0;
+
+    auto     it       = stack_.begin();
+    unsigned distance = 0;
+    for (unsigned b = 1; b < next_bucket_; b++) {
+        for (; it != buckets_[b].marker; it++) {
+            assert(it != stack_.end());
+            distance++;
+        }
+        assert(distance == Bucket::min_dists[b]);
+    }
+#endif /* RD_DEBUG */
 }

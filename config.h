@@ -17,6 +17,9 @@
 #    define RD_DEBUG 2
 #endif
 
+// on debug, for example, consistency check every 100th reference
+#define RD_CONSISTENCY_CHECK_FREQUENCY 100
+
 // 2: Huge amount of debug output, 1: checks, 0: silent
 #define RD_VERBOSE                    0
 

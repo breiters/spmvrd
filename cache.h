@@ -109,7 +109,7 @@ public:
                     id,
                     shared_,
                     time,
-                    nnz_count_ / 2, // TODO: we are doing two rounds, thus the nnz count is doubled
+                    nnz_count_ / 2, // TODO: hotfix since we are doing two rounds, thus the nnz count is doubled
                     working_set_size,
                     reuse_count_,
                     Bucket::min_dists[i],
@@ -132,7 +132,7 @@ public:
 private:
     void move_markers(unsigned);
     void on_next_bucket_gets_active();
-    void check_consistency();
+    void check_consistency(bool force);
 
     std::list<MemoryBlock>                  stack_{};
     std::unordered_map<Addr, StackIterator> refmap_{};
