@@ -99,9 +99,6 @@ Bucket::Counts Cache::on_block_seen(StackIterator &it)
     size_t reuse_distance_xy  = ncl_row_y;
     size_t reuse_distance_xya = ncl_row_y + ncl_col_a;
 
-    unsigned bucket_xy  = bucket;
-    unsigned bucket_xya = bucket;
-
     size_t rd_min = Bucket::min_dists[bucket];
     size_t rd_max = Bucket::min_dists[bucket + 1] - 1;
     size_t rd_avg = (rd_min + rd_max) / 2;
@@ -114,18 +111,23 @@ Bucket::Counts Cache::on_block_seen(StackIterator &it)
         reuse_distance_xya += rd_avg;
 
         // compute buckets of policy xy and policy xya
+        
+        unsigned bucket_xy  = bucket;
         for (size_t b = bucket + 1; b < buckets_.size(); ++b) {
-            bool done         = true;
             auto min_distance = Bucket::min_dists[b];
             if (reuse_distance_xy >= min_distance) {
                 ++bucket_xy;
-                done = false;
+            } else {
+                break;
             }
+        }
+
+        unsigned bucket_xya = bucket_xy;
+        for (size_t b = bucket_xy + 1; b < buckets_.size(); ++b) {
+            auto min_distance = Bucket::min_dists[b];
             if (reuse_distance_xya >= min_distance) {
                 ++bucket_xya;
-                done = false;
-            }
-            if (done) {
+            } else {
                 break;
             }
         }
@@ -228,7 +230,7 @@ out:
 void Cache::check_consistency(bool force)
 {
 #if RD_DEBUG
-    static size_t iter     = 0;
+    static size_t iter = 0;
     iter++;
     if (!force && iter < RD_CONSISTENCY_CHECK_FREQUENCY) {
         return;
