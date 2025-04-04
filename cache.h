@@ -101,7 +101,8 @@ public:
         "matrix,nnz,nrows,cache_id,shared,time,nnz_count,working_set_size,reuses,mindist,count_x,count_xy,count_xya\n";
     void print_csv(FILE *file, const auto &matrix, int id, double time) const
     {
-        size_t working_set_size = refmap_.size();
+        size_t working_set_size = stack_.size();
+
         for (size_t i = 0u; i != Bucket::min_dists.size(); ++i) {
             // matrix name, nnz, nrow, cache id, shared, min bucket, count
             fprintf(file,
@@ -127,8 +128,6 @@ public:
         for (auto &b : buckets_) {
             b.access_counts = {0u, 0u, 0u};
         }
-        // nnz_count_   = 0u; // probably bad because of wrap-around
-        // row_count_   = 0u; // probably bad because of wrap-around
         reuse_count_ = 0u;
     }
 
