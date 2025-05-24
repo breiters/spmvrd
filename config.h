@@ -1,6 +1,17 @@
 #pragma once
 
-#define MAX_THREADS 48
+// config parameters
+#ifndef MAX_THREADS
+#    define MAX_THREADS 48
+#endif
+
+#ifndef THREADS_PER_SHARED_CACHE
+#    define THREADS_PER_SHARED_CACHE 12
+#endif
+
+#ifndef NUM_SHARED_CACHES
+#    define NUM_SHARED_CACHES 4
+#endif
 
 // cache line size on the machine used for profiling
 #ifndef CACHE_LINESIZE
@@ -8,7 +19,9 @@
 #endif
 
 // cache line size of the target architecture (must be a power-of-two)
-#define MEMBLOCKLEN 256
+#ifndef MEMBLOCKLEN
+#    define MEMBLOCKLEN 256
+#endif
 
 // Assertions and consistency check?
 #if NDEBUG
@@ -21,10 +34,10 @@
 #define RD_CONSISTENCY_CHECK_FREQUENCY 100
 
 // 2: Huge amount of debug output, 1: checks, 0: silent
-#define RD_VERBOSE                    0
+#define RD_VERBOSE                     0
 
 // Print only up to N-th marker in debug output
-#define RD_PRINT_MARKER_MAX           2
+#define RD_PRINT_MARKER_MAX            2
 
 // Do not account for zero distance accesses?
 // #define RD_DO_NOT_COUNT_ZERO_DISTANCE 0

@@ -62,10 +62,10 @@ StackIterator Cache::on_block_new(MemoryBlock &&mb)
     return stack_.begin();
 }
 
-void Cache::move_markers(unsigned topBucket)
+void Cache::move_markers(unsigned bucket_max)
 {
-    assert(topBucket < next_bucket_);
-    for (unsigned b = 1; b <= topBucket; b++) {
+    assert(bucket_max < next_bucket_);
+    for (unsigned b{1u}; b <= bucket_max; b++) {
         assert(buckets_[next_bucket_].marker != stack_.begin());
 
         // decrement marker so it stays always on same distance to stack begin
@@ -111,8 +111,8 @@ Bucket::Counts Cache::on_block_seen(StackIterator &it)
         reuse_distance_xya += rd_avg;
 
         // compute buckets of policy xy and policy xya
-        
-        unsigned bucket_xy  = bucket;
+
+        unsigned bucket_xy = bucket;
         for (size_t b = bucket + 1; b < buckets_.size(); ++b) {
             auto min_distance = Bucket::min_dists[b];
             if (reuse_distance_xy >= min_distance) {
@@ -227,7 +227,7 @@ out:
  * - distance of bucket marker to stack begin must be equal to the min distance for the
  * bucket
  */
-void Cache::check_consistency(bool force)
+void Cache::check_consistency([[maybe_unused]] bool force)
 {
 #if RD_DEBUG
     static size_t iter = 0;

@@ -5,9 +5,8 @@
 #include "mcslock.h"
 
 #include <algorithm>
-#include <atomic>
 #include <list>
-#include <unordered_map>
+// #include <unordered_map>
 #include <vector>
 
 #include <cstdint>
@@ -18,7 +17,7 @@ typedef unsigned Addr;
 // make sure that memblocks are powers of two
 static constexpr bool is_pow2(int a) { return !(a & (a - 1)); }
 static_assert(is_pow2(MEMBLOCKLEN), "is_pow2(MEMBLOCKLEN)");
-static_assert(is_pow2(CACHE_LINESIZE), "is_pow2(MEMBLOCKLEN)");
+static_assert(is_pow2(CACHE_LINESIZE), "is_pow2(CACHE_LINESIZE)");
 
 // find first bit set
 static constexpr int ffs_constexpr(int x)
@@ -35,10 +34,10 @@ static_assert(ffs_constexpr(256) == 8, "ffs_constexpr(256) == 8"); // sanity che
 
 // gets the cache line number of an index
 template <typename T, size_t CLSIZE>
-unsigned cline(uint64_t idx)
+Addr cline(uint64_t idx)
 {
     constexpr static auto first_bit_set = ffs_constexpr(CLSIZE / sizeof(T));
-    return idx >> first_bit_set;
+    return static_cast<Addr>(idx >> first_bit_set);
 }
 
 class Cache
@@ -57,7 +56,7 @@ public:
         last_ = addr;
 
         // auto map_it = refmap_.find(addr);
-        StackIterator& it = refmap_[addr];
+        StackIterator &it = refmap_[addr];
 
         // if (map_it == refmap_.end()) {
         if (it == stack_.end()) {
@@ -103,7 +102,7 @@ public:
     {
         size_t working_set_size = stack_.size();
 
-        for (size_t i = 0u; i != Bucket::min_dists.size(); ++i) {
+        for (size_t i{0u}; i != Bucket::min_dists.size(); ++i) {
             // matrix name, nnz, nrow, cache id, shared, min bucket, count
             fprintf(file,
                     "%s,%zu,%zu,%d,%d,%f,%zu,%zu,%zu,%lu,%lu,%lu,%lu\n",
@@ -133,22 +132,28 @@ public:
 
     void set_refmap_size(size_t nelem)
     {
-        size_t nlines = nelem * 8 / 256 + 1;
-        // refmap_ = std::vector<StackIterator>(nlines, stack_.end());
-        refmap_.reserve(nlines);
-#pragma omp parallel for
-        for(size_t i = 0u; i != nlines; ++i) {
-            refmap_[i] = stack_.end();
+        size_t nlines = nelem * sizeof(double) / MEMBLOCKLEN + 1;
+#pragma omp critical
+        {
+            if (refmap_.empty()) {
+                refmap_.reserve(nlines);
+                for (size_t i{0u}; i != nlines; ++i) {
+                    refmap_[i] = stack_.end();
+                }
+            }
         }
     }
 
 private:
-    void move_markers(unsigned);
+    void move_markers(unsigned bucket_max);
     void on_next_bucket_gets_active();
     void check_consistency(bool force);
 
-    std::list<MemoryBlock>                  stack_{};
+    std::list<MemoryBlock> stack_{};
     // std::unordered_map<Addr, StackIterator> refmap_{};
+
+    /* we use a vector as reference map because it's faster */
+    /* this is possible due to the virtual manually-assigned cache line numbers */
     std::vector<StackIterator> refmap_{};
 
     uint64_t nnz_count_{0u};
@@ -201,28 +206,6 @@ public:
         handle_cline(a2);
         mcslock_.unlock(tid);
     }
-
-#if 0
-    template<typename... As>
-    void handle_clines_shared(int tid, As... addrs)
-    {
-        mcslock_.lock(tid);
-        handle_clines_shared(addrs...);
-        mcslock_.unlock(tid);
-    }
-
-    template<typename... As>
-    void handle_clines_shared(Addr a, As... addrs)
-    {
-        handle_cline(a);
-        handle_clines_shared(addrs...);
-    }
-
-    void handle_clines_shared(Addr a)
-    {
-        handle_cline(a);
-    }
-#endif
 
     void reset_buckets_shared(int tid)
     {

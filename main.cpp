@@ -12,19 +12,26 @@
 #include <cstdlib>
 #include <unistd.h>
 
-#ifndef USE_ONLY_X_IN_TEMPORAL_SECTOR
-#    define USE_ONLY_X_IN_TEMPORAL_SECTOR 1
-#endif /* USE_ONLY_X_IN_TEMPORAL_SECTOR */
+#ifndef RD_POLICY_X
+#    define RD_POLICY_X 1
+#endif /* RD_POLICY_X */
+
+#ifndef RD_WANT_L1_CACHE_MISSES
+#    define RD_WANT_L1_CACHE_MISSES 0
+#endif /* RD_WANT_L1_CACHE_MISSES */
+
+#ifndef RD_WANT_DOUBLE_RESOLUTION
+#    define RD_WANT_DOUBLE_RESOLUTION 0
+#endif /* RD_WANT_DOUBLE_RESOLUTION */
 
 using rowptr_t = int64_t;
 using colidx_t = int;
 using val_t    = double;
-using x_t      = val_t;
-using y_t      = val_t;
 
-void set_buckets_a64fx(const auto &matrix)
+enum CachePolicy { POLICY_X = 0, POLICY_XY, POLICY_XYA, POLICY_MAX };
+
+void set_buckets_a64fx(void)
 {
-    (void)matrix;
     // required buckets for a64fx:
     // 4-way L1d 64KiB => 4 Buckets with distance 64KiB / 4
     // 16-way L2 8MiB => 16 Buckets with distance 8MiB / 16
@@ -40,8 +47,7 @@ void set_buckets_a64fx(const auto &matrix)
 
     Bucket::min_dists.push_back(0);
 
-#define WANT_L1_CACHE_MISSES 1
-#if WANT_L1_CACHE_MISSES
+#if RD_WANT_L1_CACHE_MISSES
     for (int i = 0; i < L1ways; i++)
         Bucket::min_dists.push_back(L1d_capacity_per_way * (i + 1) / MEMBLOCKLEN);
 #endif
@@ -49,9 +55,11 @@ void set_buckets_a64fx(const auto &matrix)
     for (int i = 0; i < L2ways; i++)
         Bucket::min_dists.push_back(L2_capacity_per_way * (i + 1) / MEMBLOCKLEN);
 
+#if RD_WANT_DOUBLE_RESOLUTION
     // double resolution in most relevant region
     for (int i = 0; i < L2ways; i++)
         Bucket::min_dists.push_back((L2_capacity_per_way * (i + 1) - L2_capacity_per_way / 2) / MEMBLOCKLEN);
+#endif /* RD_WANT_DOUBLE_RESOLUTION */
 
     // bucket for cold misses (infinite reuse distance)
     Bucket::min_dists.push_back(Bucket::INF_DIST);
@@ -68,19 +76,19 @@ void reuse_sector0(int tid, PrivateCache &pc, SharedCache &sc, const auto &matri
 {
 #pragma omp for schedule(static)
     for (unsigned r = 0; r < matrix.nrow; ++r) {
-        // fprintf(stderr, "row: %d\n", r);
         for (rowptr_t i = matrix.row_ptr[r]; i < matrix.row_ptr[r + 1]; ++i) {
-            auto cl_x = cline<val_t, MEMBLOCKLEN>(matrix.col_idx[i]);
-            // printf("row: %u, coldix: %u, cline: %lu val: %f i: %u\n", r,
-            // matrix.col_idx[i], cl_x, matrix.val[i], i);
+            auto cl_x             = cline<val_t, MEMBLOCKLEN>(matrix.col_idx[i]);
             bool first_nnz_in_row = (i == matrix.row_ptr[r]);
-#if WANT_L1_CACHE_MISSES
+#if RD_WANT_L1_CACHE_MISSES
             pc.handle_cline(cl_x, first_nnz_in_row);
 #endif
             sc.handle_cline_shared(tid, cl_x, first_nnz_in_row);
         }
     }
 }
+
+// sector0 : x / xy / xya
+// sector1 : ya / a / -
 
 void reuse_calc2(int tid, PrivateCache &pc, SharedCache &sc, const auto &matrix)
 {
@@ -93,9 +101,11 @@ void reuse_calc2(int tid, PrivateCache &pc, SharedCache &sc, const auto &matrix)
     auto cl_a_start   = cl_y_start + cline<val_t, MEMBLOCKLEN>(matrix.nrow) + 1;
     auto cl_col_start = cl_a_start + cline<val_t, MEMBLOCKLEN>(matrix.nnz) + 1;
 
-#if !USE_ONLY_X_IN_TEMPORAL_SECTOR || USE_CALC_NOSC_REUSE
-    // row ptr[0]
-    auto cl_row = cl_row_start + cline<rowptr_t, MEMBLOCKLEN>(0);
+#if !RD_POLICY_X || RD_POLICY_XYA
+    // row_ptr[r]
+    unsigned first_row = (matrix.nrow / omp_get_num_threads()) * omp_get_thread_num();
+
+    auto cl_row = cl_row_start + cline<rowptr_t, MEMBLOCKLEN>(first_row);
     pc.handle_cline(cl_row);
     sc.handle_cline_shared(tid, cl_row);
 #endif
@@ -103,7 +113,7 @@ void reuse_calc2(int tid, PrivateCache &pc, SharedCache &sc, const auto &matrix)
 #pragma omp for schedule(static)
     for (unsigned r = 0; r < matrix.nrow; ++r) {
         // fprintf(stderr, "row: %d\n", r);
-#if !USE_ONLY_X_IN_TEMPORAL_SECTOR || USE_CALC_NOSC_REUSE
+#if !RD_POLICY_X || RD_POLICY_XYA
         // rowptr[r + 1]
         auto cl_row_plus1 = cl_row_start + cline<rowptr_t, MEMBLOCKLEN>(r + 1);
         pc.handle_cline(cl_row_plus1);
@@ -116,22 +126,22 @@ void reuse_calc2(int tid, PrivateCache &pc, SharedCache &sc, const auto &matrix)
 #endif
 
         for (rowptr_t i = matrix.row_ptr[r]; i < matrix.row_ptr[r + 1]; ++i) {
-#if USE_CALC_NOSC_REUSE
+#if RD_POLICY_XYA
             // a[i]
             auto cl_a = cl_a_start + cline<val_t, MEMBLOCKLEN>(i);
             pc.handle_cline(cl_a);
             // col_idx[i]
             auto cl_col = cl_col_start + cline<colidx_t, MEMBLOCKLEN>(i);
             pc.handle_cline(cl_col);
-#endif /* USE_CALC_NOSC_REUSE */
+#endif /* RD_POLICY_XYA */
             // x[col_idx[i]]
             auto cl_x = cline<val_t, MEMBLOCKLEN>(matrix.col_idx[i]);
             pc.handle_cline(cl_x);
-#if USE_CALC_NOSC_REUSE
+#if RD_POLICY_XYA
             sc.handle_clines_shared(tid, cl_a, cl_col, cl_x);
 #else
             sc.handle_cline_shared(tid, cl_x);
-#endif /* USE_CALC_NOSC_REUSE */
+#endif /* RD_POLICY_XYA */
         }
     }
 }
@@ -147,8 +157,10 @@ void reuse_sector1(int tid, PrivateCache &pc, SharedCache &sc, const auto &matri
     auto cl_a_start   = cl_y_start + cline<val_t, MEMBLOCKLEN>(matrix.nrow) + 1;
     auto cl_col_start = cl_a_start + cline<val_t, MEMBLOCKLEN>(matrix.nnz) + 1;
 
-    // row ptr[0]
-    auto cl_row = cl_row_start + cline<rowptr_t, MEMBLOCKLEN>(0);
+    // row_ptr[r]
+    unsigned first_row = (matrix.nrow / omp_get_num_threads()) * omp_get_thread_num();
+
+    auto cl_row = cl_row_start + cline<rowptr_t, MEMBLOCKLEN>(first_row);
     pc.handle_cline(cl_row);
     sc.handle_cline_shared(tid, cl_row);
 
@@ -221,20 +233,14 @@ usage:
     if (!matrix_path)
         goto usage;
 
-#if 0
-    char overhead_csv_path[1024];
-    snprintf(overhead_csv_path, 1024, "overhead-%03dthreads.csv", omp_get_max_threads());
-
-    FILE *overhead_csv_file = fopen(overhead_csv_path, "a");
-    if (!overhead_csv_file) {
-        perror("fopen (overhead csv file)");
-        exit(EXIT_FAILURE);
-    }
-#endif
-
 #if !NDEBUG
     fprintf(stderr, "[!!] running %s in debug mode [!!]\n", argv[0]);
 #endif
+
+    if (omp_get_max_threads() > MAX_THREADS) {
+        fprintf(stderr, "Error: %s configured for max. %d threads\n", argv[0], MAX_THREADS);
+        exit(EXIT_FAILURE);
+    }
 
     fprintf(stderr, "reading matrix: %s ...", matrix_path);
     matrix_csr<val_t, rowptr_t, colidx_t> matrix;
@@ -248,30 +254,13 @@ usage:
     char *needle = strrchr(matrix_path, '/');
     matrix.name  = needle ? needle + 1 : matrix_path;
 
-    constexpr int threads_per_shared_cache = 12;
-    constexpr int num_shared_caches        = 4;
+    constexpr int threads_per_shared_cache = THREADS_PER_SHARED_CACHE;
+    constexpr int num_shared_caches        = NUM_SHARED_CACHES;
 
-    assert(omp_get_max_threads() <= MAX_THREADS);
-
-    assert((cline<int32_t, 256>(0u) == 0));
-    assert((cline<int32_t, 256>(64u) == 1));
-    assert((cline<int32_t, 256>(128u) == 2));
-    assert((cline<double, 256>(0u) == 0));
-    assert((cline<double, 256>(32u) == 1));
-    assert((cline<double, 256>(64u) == 2));
-
-#if USE_SCALED_REUSE
-    set_buckets_a64fx_scaled(matrix);
-#else
-    set_buckets_a64fx(matrix);
-#endif /* USE_SCALED_REUSE */
+    set_buckets_a64fx();
 
     std::array<SharedCache, num_shared_caches> shared_caches{};
-    for(auto &sc : shared_caches) {
-        sc.set_refmap_size(matrix.ncol);
-    }
 
-    // fprintf(csv_file, "matrix,nnz,nrows,cache_id,shared,mindist,count\n");
     fprintf(csv_file, Cache::csv_header_);
     double time;
     double time_diff;
@@ -283,13 +272,13 @@ usage:
         PrivateCache pc{};
         SharedCache &sc = shared_caches[tid / threads_per_shared_cache];
 
+        // TODO: set refmap size depending on policy
         pc.set_refmap_size(matrix.ncol);
+        sc.set_refmap_size(matrix.ncol);
 
-        if (verbose) {
 #pragma omp barrier
 #pragma omp single
-            time = omp_get_wtime();
-        }
+        time = omp_get_wtime();
 
         for (int rep = 0; rep < 2; ++rep) {
             switch (conf) {
@@ -313,13 +302,12 @@ usage:
             }
         }
 
-        if (verbose) {
 #pragma omp barrier
 #pragma omp single
-            {
-                time_diff = omp_get_wtime() - time;
+        {
+            time_diff = omp_get_wtime() - time;
+            if (verbose) {
                 fprintf(stderr, "matrix: %s, time: %f sec\n", matrix_path, time_diff);
-                // fprintf(overhead_csv_file, "%s, %f\n", matrix_path, time_diff);
             }
         }
 
@@ -333,5 +321,4 @@ usage:
         ++i;
     }
     fclose(csv_file);
-    // fclose(overhead_csv_file);
 }
